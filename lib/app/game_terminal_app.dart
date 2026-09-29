@@ -4,6 +4,9 @@ import 'package:go_router/go_router.dart';
 import '../core/theme/app_theme.dart';
 import '../data/repositories/shop_repository.dart';
 import '../data/repositories/operations_repository.dart';
+import '../data/repositories/website_repository.dart';
+import '../features/management/management_pages.dart';
+import '../features/management/report_pages.dart';
 import '../features/operations/operations_pages.dart';
 import '../features/auth/auth_controller.dart';
 import '../features/auth/auth_pages.dart';
@@ -31,6 +34,7 @@ class GameTerminalApp extends StatefulWidget {
     required this.auth,
     required this.shop,
     this.operations = const DisconnectedOperationsRepository(),
+    this.website = const DisconnectedWebsiteRepository(),
     required this.connected,
     this.startupIssue,
     this.initialLocation = '/login',
@@ -38,6 +42,7 @@ class GameTerminalApp extends StatefulWidget {
   final AuthController auth;
   final ShopRepository shop;
   final OperationsRepository operations;
+  final WebsiteRepository website;
   final bool connected;
   final String? startupIssue;
   final String initialLocation;
@@ -75,19 +80,26 @@ class _GameTerminalAppState extends State<GameTerminalApp>
           auth: widget.auth,
           repository: widget.shop,
           operations: widget.operations,
+          website: widget.website,
           path: state.uri.path,
           child: child,
         ),
         routes: [
-          for (final path in ['/dashboard', '/owner'])
-            GoRoute(path: path, builder: (_, _) => const ShopOverviewPage()),
-          for (final path in ['/stations', '/owner/operations'])
-            GoRoute(path: path, builder: (_, _) => const StationsPage()),
+          GoRoute(path: '/dashboard', builder: (_, _) => ReceptionDashboardPage(operations: widget.operations,website:widget.website)),
+          GoRoute(path: '/owner', builder: (_, _) => OwnerBusinessPage(operations:widget.operations)),
+          GoRoute(path: '/stations', builder: (_, _) => const StationsPage()),
+          GoRoute(path: '/owner/operations', builder: (_, _) => OwnerOperationsPage(operations:widget.operations)),
+          GoRoute(path: '/station-details',builder: (_, _) => StationInsightsPage(website:widget.website)),
+          GoRoute(path: '/game-terminal',builder: (_, _) => GameTerminalPage(repository:widget.website)),
+          GoRoute(path: '/customers',builder: (_, _) => CustomersPage(repository:widget.website)),
+          GoRoute(path: '/expenses',builder: (_, _) => ExpensesPage(repository:widget.website)),
+          GoRoute(path: '/transactions',builder: (_, _) => TransactionsPage(repository:widget.website)),
+          GoRoute(path: '/daily-report',builder: (_, _) => DailyReportPage(operations:widget.operations)),
           for (final path in ['/sessions', '/owner/sessions'])
-            GoRoute(path: path, builder: (_, _) => SessionsPage(repository: widget.operations, role: widget.auth.role!)),
+            GoRoute(path: path, builder: (_, _) => SessionsPage(repository: widget.operations, website:widget.website, role: widget.auth.role!)),
           for (final path in ['/bookings', '/owner/bookings'])
-            GoRoute(path: path, builder: (_, _) => BookingsPage(repository: widget.operations, role: widget.auth.role!)),
-          GoRoute(path: '/owner/reports', builder: (_, _) => ReportsPage(repository: widget.operations)),
+            GoRoute(path: path, builder: (_, _) => BookingsPage(repository: widget.operations, website:widget.website, role: widget.auth.role!)),
+          GoRoute(path: '/owner/reports', builder: (_, _) => OwnerBusinessPage(operations:widget.operations,reportsOnly:true)),
           for (final path in ['/account', '/owner/account'])
             GoRoute(
               path: path,

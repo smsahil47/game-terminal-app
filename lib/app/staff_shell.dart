@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../data/models/app_role.dart';
 import '../data/repositories/shop_repository.dart';
 import '../data/repositories/operations_repository.dart';
+import '../data/repositories/website_repository.dart';
 import '../features/auth/auth_controller.dart';
 import '../features/shop/shop_controller.dart';
 
@@ -23,12 +24,14 @@ class StaffShell extends StatefulWidget {
     required this.auth,
     required this.repository,
     required this.operations,
+    required this.website,
     required this.path,
     required this.child,
   });
   final AuthController auth;
   final ShopRepository repository;
   final OperationsRepository operations;
+  final WebsiteRepository website;
   final String path;
   final Widget child;
   @override
@@ -54,6 +57,22 @@ class _StaffShellState extends State<StaffShell> {
     return ShopScope(
       controller: controller,
       child: Scaffold(
+        drawer: Drawer(child:SafeArea(child:ListView(children:[
+          const ListTile(title:Text('Game Terminal')),
+          for(final item in (role == AppRole.owner
+            ? <(String,String,IconData)>[
+                ('Overview',role.home,Icons.dashboard),('Shop Operations',role.stationsPath,Icons.store),
+                ('Reports',role.reportsPath,Icons.bar_chart),('Account',role.accountPath,Icons.person)]
+            : <(String,String,IconData)>[
+                ('Dashboard',role.home,Icons.dashboard),('Bookings',role.bookingsPath,Icons.calendar_month),
+                ('Sessions',role.sessionsPath,Icons.timer),('Stations',role.stationsPath,Icons.sports_esports),
+                ('Station details',role.stationDetailsPath,Icons.display_settings),
+                ('Transactions',role.transactionsPath,Icons.receipt_long),('Customers',role.customersPath,Icons.people),
+                ('Expenses',role.expensesPath,Icons.account_balance_wallet),('Daily Report',role.dailyReportPath,Icons.summarize),
+                ('Game Terminal',role.gameTerminalPath,Icons.settings),('Account',role.accountPath,Icons.person)]))
+            ListTile(leading:Icon(item.$3),title:Text(item.$1),selected:widget.path==item.$2,
+              onTap:(){Navigator.pop(context);context.go(item.$2);}),
+        ]))),
         appBar: AppBar(
           title: const Text('Game Terminal'),
           actions: [

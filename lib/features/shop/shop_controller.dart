@@ -23,6 +23,7 @@ class ShopController extends ChangeNotifier {
   final ShopRepository repository;
   late final StreamSubscription<bool> _subscription;
   ShopSnapshot? snapshot;
+  int dataVersion = 0;
   String? error;
   bool loading = false;
   bool realtimeConnected = false;
@@ -43,6 +44,7 @@ class ShopController extends ChangeNotifier {
       final next = await repository.load();
       if (_disposed) return;
       snapshot = next;
+      dataVersion++;
       error = null;
     } catch (_) {
       if (_disposed) return;

@@ -9,6 +9,8 @@ import 'data/repositories/operations_repository.dart';
 import 'data/repositories/supabase_operations_repository.dart';
 import 'data/repositories/supabase_auth_repository.dart';
 import 'data/repositories/supabase_shop_repository.dart';
+import 'data/repositories/website_repository.dart';
+import 'data/repositories/supabase_website_repository.dart';
 import 'features/auth/auth_controller.dart';
 import 'services/secure_session_storage.dart';
 
@@ -18,6 +20,7 @@ Future<void> main() async {
   AuthRepository auth = const DisconnectedAuthRepository();
   ShopRepository shop = const DisconnectedShopRepository();
   OperationsRepository operations = const DisconnectedOperationsRepository();
+  WebsiteRepository website = const DisconnectedWebsiteRepository();
   var connected = false;
   String? startupIssue = config.validationError;
   if (config.enabled && startupIssue == null) {
@@ -34,6 +37,7 @@ Future<void> main() async {
       auth = SupabaseAuthRepository(supabase.client);
       shop = SupabaseShopRepository(supabase.client);
       operations = SupabaseOperationsRepository(supabase.client);
+      website = SupabaseWebsiteRepository(supabase.client);
       connected = true;
     } catch (_) {
       startupIssue =
@@ -45,6 +49,7 @@ Future<void> main() async {
       auth: AuthController(auth),
       shop: shop,
       operations: operations,
+      website: website,
       connected: connected,
       startupIssue: startupIssue,
     ),

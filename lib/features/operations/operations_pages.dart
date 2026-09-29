@@ -9,6 +9,10 @@ import '../../data/models/app_role.dart';
 import '../../data/models/operations.dart';
 import '../../data/models/shop_snapshot.dart';
 import '../../data/repositories/operations_repository.dart';
+import '../../data/repositories/website_repository.dart';
+import '../../services/document_export.dart';
+import '../../services/live_shop_data.dart';
+import 'booking_start.dart';
 
 String money(int value) => '₹$value';
 String dateOnly(DateTime date) => '${date.year.toString().padLeft(4,'0')}-${date.month.toString().padLeft(2,'0')}-${date.day.toString().padLeft(2,'0')}';
@@ -21,12 +25,13 @@ Widget field(TextEditingController controller, String label, {TextInputType? key
 int parsed(TextEditingController controller) => int.tryParse(controller.text.trim()) ?? 0;
 
 class SessionsPage extends StatefulWidget {
-  const SessionsPage({super.key,required this.repository,required this.role});
+  const SessionsPage({super.key,required this.repository,required this.website,required this.role});
   final OperationsRepository repository;
+  final WebsiteRepository website;
   final AppRole role;
   @override State<SessionsPage> createState()=>_SessionsPageState();
 }
-class _SessionsPageState extends State<SessionsPage> {
+class _SessionsPageState extends State<SessionsPage> with LiveShopData {
   late Future<List<SessionDetail>> future = widget.repository.sessions();
   void reload() { setState(()=> future=widget.repository.sessions()); ShopScope.of(context).refresh(); }
   @override Widget build(BuildContext context) {
@@ -35,30 +40,34 @@ class _SessionsPageState extends State<SessionsPage> {
       Row(children:[Expanded(child:Text('Sessions',style:Theme.of(context).textTheme.headlineSmall)),
         if(widget.role.canOperate && shop!=null) FilledButton.icon(onPressed:()=>_start(context,shop),icon:const Icon(Icons.add),label:const Text('Start'))]),
       const SizedBox(height:12),
-      FutureBuilder<List<SessionDetail>>(future:future,builder:(context,snapshot){
+      FutureBuilder<List<SessionDetail>>(future:future=refreshOnShopChange(future,widget.repository.sessions),builder:(context,snapshot){
         if(snapshot.hasError) return const Text('Sessions unavailable. Pull to retry.');
         if(!snapshot.hasData) return const Center(child:CircularProgressIndicator());
         if(snapshot.data!.isEmpty) return const Text('No active sessions.');
         return Column(children:[for(final s in snapshot.data!) Card(child:ListTile(
-          title:Text('${s.stationName} · ${s.customerName}'), subtitle:Text('${s.mode.label} · ${s.status} · ${s.durationMinutes+s.extraMinutes} min booked'),
+          title:Text('${s.stationName} · ${s.customerName}'), subtitle:Text('${s.mode.label} · ${s.status} · ${(s.targetMinutes??s.durationMinutes+s.extraMinutes)} min booked'),
           trailing: const Icon(Icons.chevron_right),onTap:()=>_details(context,s)))]);
       })
     ]));
   }
   Future<void> _start(BuildContext context,ShopSnapshot shop) async {
     final name=TextEditingController(), phone=TextEditingController(), minutes=TextEditingController(text:'60'), game=TextEditingController();
+    final snackName=TextEditingController(),snackPrice=TextEditingController();
+    final snacks=<Snack>[];
     Station? station=shop.stations.where((s)=>s.status==StationStatus.available).firstOrNull;
     SessionMode mode=SessionMode.gaming; int players=1; List<String> games=[];
     try { games=await widget.repository.games(); } catch (_) {}
+    final config=await widget.website.configuration();
     if(!context.mounted) return;
     await showDialog<void>(context:context,builder:(dialog)=>StatefulBuilder(builder:(context,setDialog) => AlertDialog(
       title:const Text('Start session'),content:SizedBox(width:420,child:SingleChildScrollView(child:Column(mainAxisSize:MainAxisSize.min,children:[
         DropdownButtonFormField<Station>(initialValue:station,decoration:const InputDecoration(labelText:'Station'),items:[
           for(final s in shop.stations.where((s)=>s.status==StationStatus.available)) DropdownMenuItem(value:s,child:Text(s.name))
-        ],onChanged:(v)=>setDialog(()=>station=v)),
+        ],onChanged:(v)=>setDialog((){station=v;if(v?.type!='PS5_MULTI')mode=SessionMode.gaming;})),
         const SizedBox(height:12),field(name,'Customer name'),field(phone,'Phone'),
-        DropdownButtonFormField<SessionMode>(initialValue:mode,decoration:const InputDecoration(labelText:'Mode'),items:[
-          for(final m in SessionMode.values) DropdownMenuItem(value:m,child:Text(m.label))
+        DropdownButtonFormField<SessionMode>(key:ValueKey('${station?.id}:${mode.value}'),initialValue:mode,
+          decoration:const InputDecoration(labelText:'Mode'),items:[
+          for(final m in station?.type=='PS5_MULTI'?SessionMode.values:[SessionMode.gaming]) DropdownMenuItem(value:m,child:Text(m.label))
         ],onChanged:(v)=>setDialog(()=>mode=v!)),
         if(mode==SessionMode.gaming) DropdownButtonFormField<int>(initialValue:players,decoration:const InputDecoration(labelText:'Players/controllers'),items:[
           for(var n=1;n<=4;n++) DropdownMenuItem(value:n,child:Text('$n'))
@@ -66,13 +75,19 @@ class _SessionsPageState extends State<SessionsPage> {
         if(games.isNotEmpty) DropdownButtonFormField<String>(decoration:const InputDecoration(labelText:'Game'),items:[
           for(final g in games) DropdownMenuItem(value:g,child:Text(g))
         ],onChanged:(v)=>game.text=v??''),
-        field(game,'Game (optional)'),field(minutes,'Duration minutes',keyboard:TextInputType.number),
-        Text('Menu charge: ${money(menuPlayAmount(mode,parsed(minutes),players,switch(mode){SessionMode.gaming=>150,SessionMode.vr=>400,SessionMode.racing=>250,SessionMode.racingVr=>600}))} · confirm duration before starting'),
+        field(game,'Game title'),field(minutes,'Duration minutes',keyboard:TextInputType.number),
+        for(final snack in snacks)ListTile(title:Text(snack.name),trailing:Text(money(snack.price))),
+        field(snackName,'Snack (optional)'),field(snackPrice,'Snack price',keyboard:TextInputType.number),
+        TextButton(onPressed:(){if(snackName.text.trim().isEmpty||parsed(snackPrice)<=0)return;
+          setDialog((){snacks.add(Snack(snackName.text.trim(),parsed(snackPrice)));snackName.clear();snackPrice.clear();});
+        },child:const Text('Add snack')),
+        Text('Menu charge: ${money(menuPlayAmount(mode,parsed(minutes),players,config.fallbackRate(mode.value,players),rates:config.menuRates))} · confirm duration before starting'),
       ]))),actions:[TextButton(onPressed:()=>Navigator.pop(dialog),child:const Text('Cancel')),
         FilledButton(onPressed:() async { final selected=station; final duration=parsed(minutes);
           if(selected==null || name.text.trim().isEmpty || duration<=0){notice(dialog,'Enter a station, customer and valid duration.');return;}
-          final charge=menuPlayAmount(mode,duration,players,switch(mode){SessionMode.gaming=>150,SessionMode.vr=>400,SessionMode.racing=>250,SessionMode.racingVr=>600});
-          await runAction(dialog,() async { await widget.repository.start(SessionDraft(station:selected,customerName:name.text,phone:phone.text,mode:mode,minutes:duration,players:players,game:game.text,playAmount:charge),shop.controllersFree);
+          if(selected.type!='PS5_MULTI' && mode!=SessionMode.gaming){notice(dialog,'This station supports Gaming only.');return;}
+          final charge=menuPlayAmount(mode,duration,players,config.fallbackRate(mode.value,players),rates:config.menuRates);
+          await runAction(dialog,() async { await widget.repository.start(SessionDraft(station:selected,customerName:name.text,phone:phone.text,mode:mode,minutes:duration,players:players,game:game.text,playAmount:charge,ratePerHour:config.fallbackRate(mode.value,players),snacks:snacks),shop.controllersFree);
             if(dialog.mounted){Navigator.pop(dialog);reload();} });
         },child:const Text('Start'))]
     )));
@@ -80,7 +95,7 @@ class _SessionsPageState extends State<SessionsPage> {
   Future<void> _details(BuildContext context,SessionDetail s) async {
     await showDialog<void>(context:context,builder:(dialog)=>AlertDialog(
       title:Text('${s.stationName} · ${s.customerName}'),content:Column(mainAxisSize:MainAxisSize.min,crossAxisAlignment:CrossAxisAlignment.start,children:[
-        Text('${s.mode.label} · ${s.durationMinutes+s.extraMinutes} booked minutes'),
+        Text('${s.mode.label} · ${(s.targetMinutes??s.durationMinutes+s.extraMinutes)} booked minutes'),
         Text('Started ${s.startedAt.toLocal()}'),Text('Game: ${s.game??'—'}'),
         Text('Snacks: ${money(s.snacksTotal)}'),
         if(s.endedAt!=null) Text('Stopped ${s.endedAt!.toLocal()}'),
@@ -95,10 +110,12 @@ class _SessionsPageState extends State<SessionsPage> {
   }
   Future<void> _extend(BuildContext context,SessionDetail s) async {
     int minutes=30;
+    final config=await widget.website.configuration();
+    if(!context.mounted)return;
     await showDialog<void>(context:context,builder:(dialog)=>StatefulBuilder(builder:(context,setDialog)=>AlertDialog(
       title:const Text('Extend session'),content:DropdownButton<int>(value:minutes,items:[15,30,60,120].map((v)=>DropdownMenuItem(value:v,child:Text('$v minutes'))).toList(),onChanged:(v)=>setDialog(()=>minutes=v!)),
       actions:[TextButton(onPressed:()=>Navigator.pop(dialog),child:const Text('Cancel')),
-        FilledButton(onPressed:() async {await runAction(dialog,() async {await widget.repository.extend(s,minutes,menuPlayAmount(s.mode,minutes,s.players??1,s.ratePerHour));if(dialog.mounted){Navigator.pop(dialog);reload();}});},child:const Text('Extend'))]
+        FilledButton(onPressed:() async {await runAction(dialog,() async {await widget.repository.extend(s,minutes,menuPlayAmount(s.mode,minutes,s.players??1,config.fallbackRate(s.mode.value,s.players??1),rates:config.menuRates));if(dialog.mounted){Navigator.pop(dialog);reload();}});},child:const Text('Extend'))]
     )));
   }
   Future<void> _snack(BuildContext context,SessionDetail s) async {
@@ -110,7 +127,7 @@ class _SessionsPageState extends State<SessionsPage> {
   }
   Future<void> _checkout(BuildContext context,SessionDetail s) async {
     final ended=DateTime.now(); final elapsed=ended.difference(s.startedAt).inMinutes.clamp(0,999999);
-    final booked=s.durationMinutes+s.extraMinutes;
+    final booked=(s.targetMinutes??s.durationMinutes+s.extraMinutes);
     final play=(s.ratePerHour*ended.difference(s.startedAt).inSeconds.clamp(0,999999999)/3600).floor();
     final discount=TextEditingController(text:'0'),received=TextEditingController(text:'${play+s.snacksTotal}');
     String method='CASH';
@@ -125,9 +142,38 @@ class _SessionsPageState extends State<SessionsPage> {
         Text('Subtotal ${money(bill.subtotal)} · Total ${money(bill.total)}'),
         Text('Change ${money(bill.change(parsed(received)))}'),
       ]))),actions:[TextButton(onPressed:()=>Navigator.pop(dialog),child:const Text('Cancel')),
-        FilledButton(onPressed:() async {if(parsed(received)<bill.total){notice(dialog,'Received amount is below total.');return;}
-          await runAction(dialog,() async {final receipt=await widget.repository.checkout(Checkout(session:s,bill:bill,method:method,received:parsed(received),minutes:elapsed,endedAt:ended));
-            if(dialog.mounted){Navigator.pop(dialog);reload();showDialog<void>(context:context,builder:(r)=>AlertDialog(title:Text('Receipt ${receipt.number}'),content:Text('Paid ${money(receipt.total)} · Change ${money(receipt.change)}${receipt.warning==null?'':'\n${receipt.warning}'}'),actions:[TextButton(onPressed:()=>Navigator.pop(r),child:const Text('Done'))]));}
+        FilledButton(onPressed:() async {
+          final paidAt=DateTime.now();
+          final seconds=paidAt.difference(s.startedAt).inSeconds.clamp(0,999999999);
+          final paidMinutes=(seconds/60).round();
+          final finalBill=Bill((s.ratePerHour*seconds/3600).floor(),s.snacksTotal,parsed(discount));
+          if(parsed(received)<finalBill.total){notice(dialog,'Received amount is below total.');return;}
+          await runAction(dialog,() async {final receipt=await widget.repository.checkout(Checkout(
+            session:s,bill:finalBill,method:method,received:parsed(received),minutes:paidMinutes,endedAt:paidAt));
+            if(dialog.mounted){
+              Navigator.pop(dialog);reload();
+              final lines=<List<Object?>>[
+                ['Receipt',receipt.number],['Customer',s.customerName],['Station',s.stationName],
+                ['Mode',s.mode.label],if(s.game!=null && s.game!.isNotEmpty)['Game',s.game],
+                ['Started',s.startedAt.toLocal().toString()],['Ended',paidAt.toLocal().toString()],
+                ['Duration','$paidMinutes min'],['Play',money(finalBill.play)],
+                ['Snacks',money(finalBill.snacks)],['Discount',money(finalBill.appliedDiscount)],
+                ['Total',money(receipt.total)],['Payment',method],
+                ['Received',money(parsed(received))],['Change',money(receipt.change)],
+              ];
+              showDialog<void>(context:context,builder:(r)=>AlertDialog(
+                title:Text('Receipt ${receipt.number}'),
+                content:SizedBox(width:320,child:ListView(shrinkWrap:true,children:[
+                  for(final line in lines)ListTile(dense:true,title:Text(line[0].toString()),trailing:Text(line[1].toString())),
+                  if(receipt.warning!=null)Text(receipt.warning!),
+                ])),
+                actions:[
+                  TextButton(onPressed:()=>printReceipt('Game Terminal',lines),child:const Text('Print')),
+                  TextButton(onPressed:()=>sharePdf('receipt-${receipt.number}.pdf','Game Terminal Receipt',lines),
+                    child:const Text('Share PDF')),
+                  TextButton(onPressed:()=>Navigator.pop(r),child:const Text('Done')),
+                ]));
+            }
           });
         },child:const Text('Record payment'))]);
     }));
@@ -135,11 +181,15 @@ class _SessionsPageState extends State<SessionsPage> {
 }
 
 class BookingsPage extends StatefulWidget {
-  const BookingsPage({super.key,required this.repository,required this.role});
-  final OperationsRepository repository; final AppRole role;
+  const BookingsPage({super.key,required this.repository,required this.website,required this.role});
+  final OperationsRepository repository; final WebsiteRepository website; final AppRole role;
   @override State<BookingsPage> createState()=>_BookingsPageState();
 }
-class _BookingsPageState extends State<BookingsPage> {
+class _BookingsPageState extends State<BookingsPage> with LiveShopData {
+  String scope='today';
+  String query='';
+  String? modeFilter,stationFilter;
+  DateTime? exactDate;
   late Future<List<Booking>> future=widget.repository.bookings();
   void reload()=>setState(()=>future=widget.repository.bookings());
   @override Widget build(BuildContext context) {
@@ -148,16 +198,59 @@ class _BookingsPageState extends State<BookingsPage> {
       Row(children:[Expanded(child:Text('Bookings',style:Theme.of(context).textTheme.headlineSmall)),
         if(widget.role.canOperate && shop!=null) FilledButton.icon(onPressed:()=>_edit(context,shop,null),icon:const Icon(Icons.add),label:const Text('New'))]),
       const SizedBox(height:12),
-      FutureBuilder<List<Booking>>(future:future,builder:(context,snapshot){
+      Wrap(spacing:8,children:[
+        for(final value in ['today','upcoming','all']) ChoiceChip(label:Text(value),selected:scope==value,
+          onSelected:(_)=>setState(()=>scope=value)),
+        DropdownButton<String?>(value:modeFilter,hint:const Text('All modes'),items:[
+          const DropdownMenuItem(value:null,child:Text('All modes')),
+          for(final m in SessionMode.values)DropdownMenuItem(value:m.value,child:Text(m.label))],
+          onChanged:(v)=>setState(()=>modeFilter=v)),
+        if(shop!=null)DropdownButton<String?>(value:stationFilter,hint:const Text('All stations'),items:[
+          const DropdownMenuItem(value:null,child:Text('All stations')),
+          for(final s in shop.stations)DropdownMenuItem(value:s.id,child:Text(s.name))],
+          onChanged:(v)=>setState(()=>stationFilter=v)),
+        TextButton(onPressed:()async{final day=await showDatePicker(context:context,initialDate:exactDate??DateTime.now(),
+          firstDate:DateTime(2020),lastDate:DateTime(2100));if(day!=null)setState(()=>exactDate=day);},
+          child:Text(exactDate==null?'Any date':dateOnly(exactDate!))),
+        if(exactDate!=null)IconButton(onPressed:()=>setState(()=>exactDate=null),icon:const Icon(Icons.clear)),
+      ]),
+      TextField(decoration:const InputDecoration(labelText:'Search customer or phone',prefixIcon:Icon(Icons.search)),
+        onChanged:(value)=>setState(()=>query=value.trim().toLowerCase())),
+      FutureBuilder<List<Booking>>(future:future=refreshOnShopChange(future,widget.repository.bookings),builder:(context,snapshot){
         if(snapshot.hasError) return const Text('Bookings unavailable. Pull to retry.');
         if(!snapshot.hasData) return const Center(child:CircularProgressIndicator());
-        if(snapshot.data!.isEmpty) return const Text('No bookings.');
-        return Column(children:[for(final b in snapshot.data!) Card(child:ListTile(title:Text('${b.customerName} · ${b.stationName}'),
+        final today=dateOnly(DateTime.now());
+        final visible=snapshot.data!.where((b){
+          if(scope=='today'&&b.date!=today)return false;
+          if(scope=='upcoming'&&(b.date.compareTo(today)<0||b.status!='CONFIRMED'))return false;
+          if(exactDate!=null&&b.date!=dateOnly(exactDate!))return false;
+          if(modeFilter!=null&&b.mode.value!=modeFilter)return false;
+          if(stationFilter!=null&&b.stationId!=stationFilter)return false;
+          return b.customerName.toLowerCase().contains(query)||(b.customerPhone??'').contains(query);
+        }).toList();
+        final rows=<List<Object?>>[
+          ['Date','Start','Customer','Phone','Station','Mode','Duration','Status','Advance','Method','Balance'],
+          for(final b in visible)[b.date,b.startTime,b.customerName,b.customerPhone??'',b.stationName,b.mode.value,
+            b.durationMinutes,b.status,b.advanceAmount,b.advancePaymentMethod??'',b.balanceAmount??0]];
+        if(visible.isEmpty)return const Text('No bookings match these filters.');
+        return Column(children:[
+          Row(children:[
+            TextButton(onPressed:()=>shareCsv(context,'bookings.csv',rows),child:const Text('Export CSV')),
+            TextButton(onPressed:()=>sharePdf('bookings.pdf','Bookings',rows),child:const Text('Export PDF')),
+          ]),
+          for(final b in visible) Card(child:ListTile(title:Text('${b.customerName} · ${b.stationName}'),
           subtitle:Text('${b.date} ${b.startTime} · ${b.durationMinutes} min · ${b.status}\nAdvance ${money(b.advanceAmount)}'),
           isThreeLine:true, trailing:widget.role.canOperate&&b.status=='CONFIRMED'?PopupMenuButton<String>(onSelected:(v) {
             if(v=='edit' && shop!=null) _edit(context,shop,b);
             if(v=='cancel') runAction(context,() async {await widget.repository.cancelBooking(b.id);reload();});
-          },itemBuilder:(_)=>const [PopupMenuItem(value:'edit',child:Text('Edit')),PopupMenuItem(value:'cancel',child:Text('Cancel'))]):null))]);
+            if(v=='start' && shop!=null){runAction(context,()async{
+              final started=await startBookedSession(context,b,shop,widget.repository,widget.website);
+              if(started&&context.mounted){reload();ShopScope.of(context).refresh();}
+            });}
+          },itemBuilder:(_)=>const [
+            PopupMenuItem(value:'start',child:Text('Start session')),
+            PopupMenuItem(value:'edit',child:Text('Edit')),
+            PopupMenuItem(value:'cancel',child:Text('Cancel'))]):null))]);
       })
     ]));
   }
@@ -167,14 +260,17 @@ class _BookingsPageState extends State<BookingsPage> {
     Station? station=shop.stations.where((s)=>s.id==old?.stationId).firstOrNull??shop.stations.firstOrNull;
     SessionMode mode=old?.mode??SessionMode.gaming; DateTime date=old==null?DateTime.now():DateTime.parse(old.date);
     TimeOfDay time=old==null?TimeOfDay.now():TimeOfDay(hour:int.parse(old.startTime.substring(0,2)),minute:int.parse(old.startTime.substring(3,5)));
-    String method='CASH';
+    String method=old?.advancePaymentMethod??'CASH';
     await showDialog<void>(context:context,builder:(dialog)=>StatefulBuilder(builder:(context,setDialog)=>AlertDialog(
       title:Text(old==null?'New booking':'Edit booking'),content:SizedBox(width:400,child:SingleChildScrollView(child:Column(mainAxisSize:MainAxisSize.min,children:[
         field(name,'Customer name'),field(phone,'Phone'),
         DropdownButtonFormField<Station>(initialValue:station,decoration:const InputDecoration(labelText:'Station'),items:[
-          for(final s in shop.stations) DropdownMenuItem(value:s,child:Text(s.name))],onChanged:(v)=>setDialog(()=>station=v)),
-        DropdownButtonFormField<SessionMode>(initialValue:mode,decoration:const InputDecoration(labelText:'Mode'),items:[
-          for(final m in SessionMode.values) DropdownMenuItem(value:m,child:Text(m.label))],onChanged:(v)=>setDialog(()=>mode=v!)),
+          for(final s in shop.stations) DropdownMenuItem(value:s,child:Text(s.name))],
+          onChanged:(v)=>setDialog((){station=v;if(v?.type!='PS5_MULTI')mode=SessionMode.gaming;})),
+        DropdownButtonFormField<SessionMode>(key:ValueKey('${station?.id}:${mode.value}'),initialValue:mode,
+          decoration:const InputDecoration(labelText:'Mode'),items:[
+          for(final m in station?.type=='PS5_MULTI'?SessionMode.values:[SessionMode.gaming])
+            DropdownMenuItem(value:m,child:Text(m.label))],onChanged:(v)=>setDialog(()=>mode=v!)),
         Row(children:[TextButton(onPressed:() async {final picked=await showDatePicker(context:dialog,initialDate:date,firstDate:DateTime(2020),lastDate:DateTime(2100));if(picked!=null)setDialog(()=>date=picked);},child:Text(dateOnly(date))),
           TextButton(onPressed:() async {final picked=await showTimePicker(context:dialog,initialTime:time);if(picked!=null)setDialog(()=>time=picked);},child:Text(time.format(dialog)))]),
         field(duration,'Duration minutes',keyboard:TextInputType.number),field(advance,'Advance',keyboard:TextInputType.number),
@@ -182,6 +278,7 @@ class _BookingsPageState extends State<BookingsPage> {
           DropdownMenuItem(value:'CASH',child:Text('Cash')),DropdownMenuItem(value:'UPI',child:Text('UPI'))],onChanged:(v)=>setDialog(()=>method=v!)),
       ]))),actions:[TextButton(onPressed:()=>Navigator.pop(dialog),child:const Text('Cancel')),
         FilledButton(onPressed:() async {final selected=station; if(selected==null){notice(dialog,'Choose a station.');return;}
+          if(selected.type!='PS5_MULTI' && mode!=SessionMode.gaming){notice(dialog,'This station supports Gaming only.');return;}
           final b=Booking(id:old?.id??'',customerName:name.text,customerPhone:phone.text,stationId:selected.id,stationName:selected.name,mode:mode,date:dateOnly(date),
             startTime:'${time.hour.toString().padLeft(2,'0')}:${time.minute.toString().padLeft(2,'0')}',durationMinutes:parsed(duration),status:'CONFIRMED',advanceAmount:parsed(advance));
           await runAction(dialog,() async {await widget.repository.saveBooking(b,advanceMethod:method);if(dialog.mounted){Navigator.pop(dialog);reload();}});

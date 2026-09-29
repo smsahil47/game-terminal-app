@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../app/staff_shell.dart';
 import '../../core/theme/app_theme.dart';
@@ -15,6 +16,8 @@ class ShopOverviewPage extends StatelessWidget {
       Text(data.cafeName, style: Theme.of(context).textTheme.headlineSmall),
       const SizedBox(height: 6),
       const Text('Shop overview'),
+      Align(alignment:Alignment.centerLeft,child:FilledButton.icon(
+        onPressed:()=>context.go('/sessions'),icon:const Icon(Icons.play_arrow),label:const Text('Start session'))),
       const SizedBox(height: 24),
       Wrap(
         spacing: 12,
@@ -83,7 +86,10 @@ class _StationsPageState extends State<StationsPage> {
           .where((s) => filter == null || s.status == filter)
           .toList();
       return [
-        Text('Stations', style: Theme.of(context).textTheme.headlineSmall),
+        Row(children:[
+          Expanded(child:Text('Stations', style: Theme.of(context).textTheme.headlineSmall)),
+          TextButton(onPressed:()=>context.go('/station-details'),child:const Text('Rates & usage')),
+        ]),
         const SizedBox(height: 6),
         const Text('Availability and current sessions across the shop.'),
         const SizedBox(height: 20),

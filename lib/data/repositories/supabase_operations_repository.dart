@@ -3,6 +3,7 @@ import 'dart:math';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../core/billing/billing.dart';
+import '../../core/validation/staff_validation.dart';
 import '../models/operations.dart';
 import '../models/shop_snapshot.dart';
 import 'operations_repository.dart';
@@ -20,7 +21,13 @@ class SupabaseOperationsRepository implements OperationsRepository {
 
   @override
   Future<SessionDetail> start(SessionDraft draft, int controllersFree) async {
-    if (draft.customerName.trim().isEmpty || draft.minutes <= 0) throw StateError('Enter a customer and duration.');
+    final nameError=customerNameError(draft.customerName);
+    if(nameError!=null)throw StateError(nameError);
+    final phoneError=indianPhoneError(draft.phone);
+    if(phoneError!=null)throw StateError(phoneError);
+    final gameError=gameTitleError(draft.game);
+    if(gameError!=null)throw StateError(gameError);
+    if (draft.minutes <= 0) throw StateError('Choose a duration.');
     if (draft.mode == SessionMode.gaming && draft.players > controllersFree) throw StateError('Not enough controllers are free.');
     final station = await client.from('stations').update({'status':'IN_USE','current_mode':draft.mode.value}).eq('id',draft.station.id).eq('status','AVAILABLE').select('id').maybeSingle();
     if (station == null) throw StateError('Station is no longer available.');
@@ -37,10 +44,11 @@ class SupabaseOperationsRepository implements OperationsRepository {
         'customer_phone':draft.phone?.trim().isEmpty == true ? null : draft.phone?.trim(),
         'mode':draft.mode.value,'player_count':draft.mode == SessionMode.gaming ? draft.players.clamp(1,4) : null,
         'game':draft.game.trim().isEmpty ? null : draft.game.trim(),'start_time':DateTime.now().toUtc().toIso8601String(),
-        'end_time':null,'duration_minutes':draft.minutes,'extra_minutes':0,
-        'rate_per_hour':(draft.playAmount*60/draft.minutes).round(),'booked_play_amount':draft.playAmount,
+        'end_time':null,'duration_minutes':0,'extra_minutes':0,
+        'rate_per_hour':draft.ratePerHour,'booked_play_amount':null,
         'target_duration_minutes':draft.minutes,'subtotal':0,'discount':0,'tax':0,'total':0,
-        'status':'RUNNING','notes':null,'receipt_number':null,'snacks':<Map<String,dynamic>>[],'snacks_total':0
+        'status':'RUNNING','notes':null,'receipt_number':null,'snacks':draft.snacks.map((s)=>s.toJson()).toList(),
+        'snacks_total':draft.snacks.fold<int>(0,(sum,s)=>sum+s.price)
       }).select('*').single();
       return SessionDetail.fromJson(row);
     } catch (_) {
@@ -68,7 +76,7 @@ class SupabaseOperationsRepository implements OperationsRepository {
   }
   @override
   Future<void> addSnack(SessionDetail session, Snack snack) async {
-    if (snack.name.trim().isEmpty || snack.price < 0) throw StateError('Enter a snack and valid price.');
+    if (snack.name.trim().isEmpty || snack.price <= 0) throw StateError('Enter a snack and valid price.');
     final row = await client.from('sessions').select('snacks').eq('id',session.id).inFilter('status',['RUNNING','EXTENDED']).maybeSingle();
     if (row == null) throw StateError('Session is no longer active.');
     final snacks = [...((row['snacks'] as List?) ?? []).map((s) => Map<String,dynamic>.from(s as Map)),snack.toJson()];
@@ -81,7 +89,9 @@ class SupabaseOperationsRepository implements OperationsRepository {
     final session = input.session;
     final existing = await client.from('transactions').select('receipt_number,total,change_returned').eq('session_id',session.id).maybeSingle();
     if (existing != null) return PaymentReceipt(existing['receipt_number'] as String,(existing['total'] as num).round(),(existing['change_returned'] as num?)?.round() ?? 0,alreadyPaid:true);
-    final receipt = 'GT-${DateTime.now().millisecondsSinceEpoch}-${Random.secure().nextInt(9000)+1000}';
+    String newReceipt() => 'GT-${DateTime.now().year}-${Random.secure().nextInt(900000)+100000}';
+    var receipt = newReceipt();
+    final initialReceipt=receipt;
     final claim = await client.from('sessions').update({
       'end_time':input.endedAt.toUtc().toIso8601String(),'duration_minutes':input.minutes,
       'subtotal':input.bill.subtotal,'discount':input.bill.appliedDiscount,'tax':0,'total':input.bill.total,
@@ -93,19 +103,30 @@ class SupabaseOperationsRepository implements OperationsRepository {
       throw StateError('Session changed. Refresh before checkout.');
     }
     try {
-      await client.from('transactions').insert({
-        'receipt_number':receipt,'session_id':session.id,'customer_name':session.customerName,'customer_phone':session.customerPhone,
-        'station_id':session.stationId,'station_name':session.stationName,'mode':session.mode.value,'game':session.game,
-        'player_count':session.mode == SessionMode.gaming ? session.players ?? 1 : null,'rate_per_hour':session.ratePerHour,
-        'transaction_date':input.endedAt.toUtc().toIso8601String(),'duration_minutes':input.minutes,
-        'play_charges':input.bill.play,'subtotal':input.bill.subtotal,'discount':input.bill.appliedDiscount,'tax':0,
-        'total':input.bill.total,'payment_method':input.method,'amount_received':input.received,
-        'change_returned':input.bill.change(input.received),'status':'PAID','snacks':session.snacks.map((s)=>s.toJson()).toList(),
-        'snacks_total':input.bill.snacks,'notes':session.notes
-      });
+      for(var attempt=0;attempt<5;attempt++){
+        try {
+          await client.from('transactions').insert({
+            'receipt_number':receipt,'session_id':session.id,'customer_name':session.customerName,'customer_phone':session.customerPhone,
+            'station_id':session.stationId,'station_name':session.stationName,'mode':session.mode.value,'game':session.game,
+            'player_count':session.mode == SessionMode.gaming ? session.players ?? 1 : null,'rate_per_hour':session.ratePerHour,
+            'transaction_date':input.endedAt.toUtc().toIso8601String(),'duration_minutes':input.minutes,
+            'play_charges':input.bill.play,'subtotal':input.bill.subtotal,'discount':input.bill.appliedDiscount,'tax':0,
+            'total':input.bill.total,'payment_method':input.method,'amount_received':input.received,
+            'change_returned':input.bill.change(input.received),'status':'PAID','snacks':session.snacks.map((s)=>s.toJson()).toList(),
+            'snacks_total':input.bill.snacks,'notes':session.notes
+          });
+          break;
+        } on PostgrestException catch(error) {
+          if(error.code!='23505'||attempt==4)rethrow;
+          receipt=newReceipt();
+        }
+      }
     } catch (_) {
       await client.from('sessions').update({'status':'RUNNING','end_time':null,'receipt_number':null,'subtotal':0,'discount':0,'tax':0,'total':0}).eq('id',session.id);
       rethrow;
+    }
+    if(receipt!=initialReceipt) {
+      await client.from('sessions').update({'receipt_number':receipt}).eq('id',session.id);
     }
     String? warning;
     try { await client.from('stations').update({'status':'AVAILABLE','current_mode':null}).eq('id',session.stationId); }
@@ -114,11 +135,29 @@ class SupabaseOperationsRepository implements OperationsRepository {
   }
   @override
   Future<Booking> saveBooking(Booking booking, {String? advanceMethod}) async {
-    if (booking.customerName.trim().isEmpty || booking.durationMinutes <= 0 || timeToMinutes(booking.startTime)+booking.durationMinutes > 1440) throw StateError('Check customer and booking time.');
+    final nameError=customerNameError(booking.customerName);
+    if(nameError!=null)throw StateError(nameError);
+    final phoneError=indianPhoneError(booking.customerPhone);
+    if(phoneError!=null)throw StateError(phoneError);
+    if (booking.durationMinutes <= 0 || timeToMinutes(booking.startTime)+booking.durationMinutes > 1440) throw StateError('Check booking time.');
     if (booking.advanceAmount < 0) throw StateError('Advance cannot be negative.');
     if (booking.advanceAmount > 0 && advanceMethod != 'CASH' && advanceMethod != 'UPI') throw StateError('Choose an advance payment method.');
     final all = await bookings();
     if (bookingConflict(booking, all)) throw StateError('This station has a conflicting booking.');
+    final pricing=await client.from('pricing_rates').select('*').eq('id',1).single();
+    final settings=await client.from('app_settings').select('*').eq('id',1).single();
+    final rates=<String,int>{
+      for(final key in ['racing_1h_1p','racing_30m_1p','racing_vr_15m_1p','racing_vr_30m_1p','ps5_30m_1p','ps5_1h_1p','ps5_1h_2p','ps5_1h_3p','ps5_1h_4p','vr_15m_1p','vr_30m_1p'])
+        key:(pricing[key] as num).round(),
+    };
+    final fallback=switch(booking.mode){
+      SessionMode.gaming=>(rates['ps5_1h_1p'] ?? (settings['gaming_rate_per_hour'] as num).round()),
+      SessionMode.vr=>(rates['vr_30m_1p'] ?? 200)*2,
+      SessionMode.racing=>rates['racing_1h_1p'] ?? (settings['racing_rate_per_hour'] as num).round(),
+      SessionMode.racingVr=>(rates['racing_vr_30m_1p'] ?? 300)*2,
+    };
+    final estimate=menuPlayAmount(booking.mode,booking.durationMinutes,1,fallback,rates:rates);
+    if(booking.advanceAmount>estimate)throw StateError('Advance exceeds the booking estimate.');
     final end = timeToMinutes(booking.startTime)+booking.durationMinutes;
     final endTime = '${(end~/60).toString().padLeft(2,'0')}:${(end%60).toString().padLeft(2,'0')}:00';
     final payload = {
@@ -127,7 +166,7 @@ class SupabaseOperationsRepository implements OperationsRepository {
       'player_count':booking.mode == SessionMode.gaming ? 1 : null,'booking_date':booking.date,
       'start_time':'${booking.startTime}:00','end_time':endTime,'duration_minutes':booking.durationMinutes,
       'status':booking.status,'advance_amount':booking.advanceAmount,'advance_payment_method':advanceMethod,
-      'balance_amount':0,'notes':booking.notes
+      'balance_amount':estimate-booking.advanceAmount,'notes':booking.notes
     };
     final row = booking.id.isEmpty
       ? await client.from('bookings').insert(payload).select('*').single()
@@ -140,10 +179,16 @@ class SupabaseOperationsRepository implements OperationsRepository {
     if (row == null) throw StateError('Booking is no longer confirmed.');
   }
   @override
+  Future<void> completeBooking(String id) async {
+    final row=await client.from('bookings').update({'status':'COMPLETED'}).eq('id',id).eq('status','CONFIRMED').select('id').maybeSingle();
+    if(row==null) throw StateError('Booking is no longer confirmed.');
+  }
+  @override
   Future<ReportData> report(DateTime start, DateTime end) async {
     final from = DateTime(start.year,start.month,start.day).toUtc().toIso8601String();
     final until = DateTime(end.year,end.month,end.day+1).toUtc().toIso8601String();
-    final firstDate = from.substring(0,10), lastDate = DateTime(end.year,end.month,end.day).toIso8601String().substring(0,10);
+    String localDate(DateTime date) => '${date.year.toString().padLeft(4,'0')}-${date.month.toString().padLeft(2,'0')}-${date.day.toString().padLeft(2,'0')}';
+    final firstDate = localDate(start), lastDate = localDate(end);
     final sales = rows(await client.from('transactions').select('id,receipt_number,customer_name,station_name,mode,total,transaction_date,payment_method').gte('transaction_date',from).lt('transaction_date',until).order('transaction_date',ascending:false)).map(Sale.fromJson).toList();
     final advances = rows(await client.from('bookings').select('*').gte('created_at',from).lt('created_at',until)).map(Booking.fromJson).toList();
     final expenses = rows(await client.from('expenses').select('amount,category,expense_date').gte('expense_date',firstDate).lte('expense_date',lastDate)).map(Expense.fromJson).toList();

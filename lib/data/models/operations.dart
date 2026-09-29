@@ -33,17 +33,20 @@ class SessionDetail {
 }
 
 class Booking {
-  const Booking({required this.id, required this.customerName, required this.stationId, required this.stationName, required this.mode, required this.date, required this.startTime, required this.durationMinutes, required this.status, required this.advanceAmount, this.customerPhone, this.notes});
+  const Booking({required this.id, required this.customerName, required this.stationId, required this.stationName, required this.mode, required this.date, required this.startTime, required this.durationMinutes, required this.status, required this.advanceAmount, this.customerPhone, this.notes, this.advancePaymentMethod, this.balanceAmount, this.players});
   final String id, customerName, stationId, stationName, date, startTime, status;
-  final String? customerPhone, notes;
+  final String? customerPhone, notes, advancePaymentMethod;
   final SessionMode mode;
   final int durationMinutes, advanceAmount;
+  final int? balanceAmount, players;
   factory Booking.fromJson(Map<String, dynamic> row) => Booking(
     id: row['id'] as String, customerName: row['customer_name'] as String, customerPhone: row['customer_phone'] as String?,
     stationId: row['station_id'] as String, stationName: row['station_name'] as String, mode: SessionMode.parse(row['mode']),
     date: row['booking_date'] as String, startTime: (row['start_time'] as String).substring(0,5),
     durationMinutes: (row['duration_minutes'] as num).toInt(), status: row['status'] as String,
     advanceAmount: (row['advance_amount'] as num?)?.round() ?? 0, notes: row['notes'] as String?,
+    advancePaymentMethod:row['advance_payment_method'] as String?, balanceAmount:(row['balance_amount'] as num?)?.round(),
+    players:(row['player_count'] as num?)?.toInt(),
   );
 }
 

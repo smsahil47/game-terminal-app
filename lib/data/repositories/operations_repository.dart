@@ -3,12 +3,13 @@ import '../models/shop_snapshot.dart';
 import '../../core/billing/billing.dart';
 
 class SessionDraft {
-  const SessionDraft({required this.station, required this.customerName, required this.mode, required this.minutes, required this.players, required this.game, required this.playAmount, this.phone});
+  const SessionDraft({required this.station, required this.customerName, required this.mode, required this.minutes, required this.players, required this.game, required this.playAmount, required this.ratePerHour, this.phone, this.snacks=const []});
   final Station station;
   final String customerName, game;
   final String? phone;
+  final List<Snack> snacks;
   final SessionMode mode;
-  final int minutes, players, playAmount;
+  final int minutes, players, playAmount, ratePerHour;
 }
 class Checkout {
   const Checkout({required this.session, required this.bill, required this.method, required this.received, required this.minutes, required this.endedAt});
@@ -36,6 +37,7 @@ abstract interface class OperationsRepository {
   Future<PaymentReceipt> checkout(Checkout checkout);
   Future<Booking> saveBooking(Booking booking, {String? advanceMethod});
   Future<void> cancelBooking(String id);
+  Future<void> completeBooking(String id);
   Future<ReportData> report(DateTime start, DateTime end);
 }
 class DisconnectedOperationsRepository implements OperationsRepository {
@@ -51,5 +53,6 @@ class DisconnectedOperationsRepository implements OperationsRepository {
   @override Future<PaymentReceipt> checkout(Checkout checkout) async => unavailable;
   @override Future<Booking> saveBooking(Booking booking, {String? advanceMethod}) async => unavailable;
   @override Future<void> cancelBooking(String id) async => unavailable;
+  @override Future<void> completeBooking(String id) async => unavailable;
   @override Future<ReportData> report(DateTime start, DateTime end) async => unavailable;
 }
