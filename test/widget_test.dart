@@ -1,30 +1,130 @@
-// This is a basic Flutter widget test.
-//
-// To perform an interaction with a widget in your test, use the WidgetTester
-// utility in the flutter_test package. For example, you can send tap and scroll
-// gestures. You can also use WidgetTester to find child widgets in the widget
-// tree, read text, and verify that the values of widget properties are correct.
-
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:game_terminal_app/app/game_terminal_app.dart';
+import 'package:game_terminal_app/data/models/app_role.dart';
+import 'package:game_terminal_app/data/repositories/auth_repository.dart';
+import 'package:game_terminal_app/features/auth/auth_controller.dart';
 
-import 'package:game_terminal_app/main.dart';
+import 'support/fakes.dart';
 
 void main() {
-  testWidgets('Counter increments smoke test', (WidgetTester tester) async {
-    // Build our app and trigger a frame.
-    await tester.pumpWidget(const MyApp());
-
-    // Verify that our counter starts at 0.
-    expect(find.text('0'), findsOneWidget);
-    expect(find.text('1'), findsNothing);
-
-    // Tap the '+' icon and trigger a frame.
-    await tester.tap(find.byIcon(Icons.add));
-    await tester.pump();
-
-    // Verify that our counter has incremented.
-    expect(find.text('0'), findsNothing);
-    expect(find.text('1'), findsOneWidget);
+  testWidgets(
+    'unconfigured build shows login without enabling backend or loading data',
+    (tester) async {
+      final repo = FakeAuthRepository();
+      final shop = FakeShopRepository();
+      await tester.pumpWidget(
+        GameTerminalApp(
+          auth: AuthController(repo),
+          shop: shop,
+          connected: false,
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Staff sign in'), findsOneWidget);
+      expect(
+        tester
+            .widget<FilledButton>(find.widgetWithText(FilledButton, 'Sign in'))
+            .onPressed,
+        isNull,
+      );
+      expect(repo.loginCalls, 0);
+      expect(shop.loads, 0);
+    },
+  );
+  testWidgets('validates fields before sending credentials', (tester) async {
+    final repo = FakeAuthRepository();
+    await tester.pumpWidget(
+      GameTerminalApp(
+        auth: AuthController(repo),
+        shop: FakeShopRepository(),
+        connected: true,
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Sign in'));
+    await tester.pumpAndSettle();
+    expect(find.text('Enter a valid email address.'), findsOneWidget);
+    expect(find.text('Enter your password.'), findsOneWidget);
+    expect(repo.loginCalls, 0);
+  });
+  testWidgets(
+    'receptionist signs in, sees station data and filters availability',
+    (tester) async {
+      final repo = FakeAuthRepository();
+      await tester.pumpWidget(
+        GameTerminalApp(
+          auth: AuthController(repo),
+          shop: FakeShopRepository(),
+          connected: true,
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byType(TextFormField).at(0),
+        'staff@test.invalid',
+      );
+      await tester.enterText(find.byType(TextFormField).at(1), 'password');
+      await tester.tap(find.widgetWithText(FilledButton, 'Sign in'));
+      await tester.pumpAndSettle();
+      expect(find.text('Test shop'), findsOneWidget);
+      expect(find.text('4 / 6'), findsOneWidget);
+      await tester.tap(find.text('Stations'));
+      await tester.pumpAndSettle();
+      expect(find.text('Station 1'), findsOneWidget);
+      expect(find.text('Station 2'), findsOneWidget);
+      await tester.tap(find.widgetWithText(ChoiceChip, 'Available'));
+      await tester.pumpAndSettle();
+      expect(find.text('Station 2'), findsNothing);
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+  testWidgets(
+    'owner cannot deep link into receptionist routes and sees read-only operations',
+    (tester) async {
+      final repo = FakeAuthRepository(
+        user: const StaffUser('owner', 'owner@test.invalid'),
+        role: AppRole.owner,
+      );
+      await tester.pumpWidget(
+        GameTerminalApp(
+          auth: AuthController(repo),
+          shop: FakeShopRepository(),
+          connected: true,
+          initialLocation: '/stations',
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Test shop'), findsOneWidget);
+      expect(
+        find.text('Owner access · Shop operations are read-only'),
+        findsOneWidget,
+      );
+      await tester.tap(find.text('Operations'));
+      await tester.pumpAndSettle();
+      expect(find.text('Station 1'), findsOneWidget);
+      expect(find.text('Start session'), findsNothing);
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+  testWidgets('unassigned account sees access notice and no shop data', (
+    tester,
+  ) async {
+    final shop = FakeShopRepository();
+    await tester.pumpWidget(
+      GameTerminalApp(
+        auth: AuthController(
+          FakeAuthRepository(user: const StaffUser('missing', ''), role: null),
+        ),
+        shop: shop,
+        connected: true,
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('No access assigned'), findsOneWidget);
+    expect(shop.loads, 0);
+    await tester.tap(find.text('Sign out'));
+    await tester.pumpAndSettle();
+    expect(find.text('Staff sign in'), findsOneWidget);
   });
 }

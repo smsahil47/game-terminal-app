@@ -1,0 +1,6 @@
+{
+  "ENABLE_SUPABASE": false,
+  "APP_ENV": "development",
+  "SUPABASE_URL": "",
+  "SUPABASE_PUBLISHABLE_KEY": ""
+}
