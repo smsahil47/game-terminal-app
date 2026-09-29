@@ -21,8 +21,8 @@ class AppConfig {
 
   String? get validationError {
     if (!enabled) return null;
-    if (environment != 'development' && environment != 'test') {
-      return 'Only development and test backends are supported in this build.';
+    if (environment != 'development' && environment != 'test' && environment != 'production') {
+      return 'Choose a development, test, or production backend.';
     }
     final uri = Uri.tryParse(url);
     if (uri == null ||
@@ -32,7 +32,7 @@ class AppConfig {
         uri.hasQuery ||
         uri.hasFragment ||
         (uri.path.isNotEmpty && uri.path != '/')) {
-      return 'Configure a valid HTTPS test Supabase project URL.';
+      return 'Configure a valid HTTPS Supabase project URL.';
     }
     if (publicKey.startsWith('sb_publishable_') && publicKey.length > 20) {
       return null;
@@ -49,6 +49,6 @@ class AppConfig {
     } catch (_) {
       /* Invalid public key. */
     }
-    return 'Use a public publishable or anon key for the test project.';
+    return 'Use a public publishable or anon key for the project.';
   }
 }

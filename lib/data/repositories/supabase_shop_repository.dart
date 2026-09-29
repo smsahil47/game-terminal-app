@@ -69,16 +69,8 @@ class SupabaseShopRepository implements ShopRepository {
               callback: (_) => emit(true),
             )
             .onPostgresChanges(event:PostgresChangeEvent.all,schema:'public',table:'bookings',callback:(_)=>emit(true))
-            .onPostgresChanges(event:PostgresChangeEvent.all,schema:'public',table:'transactions',callback:(_)=>emit(true))
-            .onPostgresChanges(event:PostgresChangeEvent.all,schema:'public',table:'customers',callback:(_)=>emit(true))
-            .onPostgresChanges(event:PostgresChangeEvent.all,schema:'public',table:'expenses',callback:(_)=>emit(true))
-            .onPostgresChanges(event:PostgresChangeEvent.all,schema:'public',table:'games',callback:(_)=>emit(true))
-            .onPostgresChanges(event:PostgresChangeEvent.all,schema:'public',table:'pricing_rates',callback:(_)=>emit(true))
-            .onPostgresChanges(event:PostgresChangeEvent.all,schema:'public',table:'app_settings',callback:(_)=>emit(true))
-            .subscribe(
-              (status, error) =>
-                  emit(status == RealtimeSubscribeStatus.subscribed),
-            );
+            .onPostgresChanges(event:PostgresChangeEvent.insert,schema:'public',table:'transactions',callback:(_)=>emit(true))
+            .subscribe((status, error) => emit(status == RealtimeSubscribeStatus.subscribed));
       },
       onCancel: () async {
         final active = channel;

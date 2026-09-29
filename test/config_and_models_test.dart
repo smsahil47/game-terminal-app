@@ -11,8 +11,17 @@ void main() {
     expect(config.url, isEmpty);
     expect(config.validationError, isNull);
   });
-  test('enabled backend requires test environment, HTTPS, and public key', () {
+  test('enabled backend requires an explicit environment, HTTPS, and public key', () {
     const key = 'sb_publishable_test_public_key';
+    expect(
+      const AppConfig(
+        enabled: true,
+        environment: 'staging',
+        url: 'https://test.supabase.co',
+        publicKey: key,
+      ).validationError,
+      isNotNull,
+    );
     expect(
       const AppConfig(
         enabled: true,
@@ -20,7 +29,7 @@ void main() {
         url: 'https://test.supabase.co',
         publicKey: key,
       ).validationError,
-      isNotNull,
+      isNull,
     );
     expect(
       const AppConfig(
