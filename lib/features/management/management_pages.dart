@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../app/staff_shell.dart';
+import '../../core/theme/website_widgets.dart';
 import '../../data/models/website_models.dart';
 import '../../data/repositories/website_repository.dart';
 import '../../services/document_export.dart';
@@ -14,18 +15,43 @@ class GameTerminalPage extends StatefulWidget {
 }
 class _GameTerminalPageState extends State<GameTerminalPage> with LiveShopData {
   late Future<ShopConfiguration> future=widget.repository.configuration();
+  int selectedTab=0;
+  String gameQuery='';
   void reload()=>setState(()=>future=widget.repository.configuration());
   @override Widget build(BuildContext context)=>RefreshIndicator(onRefresh:()async=>reload(),child:ListView(padding:const EdgeInsets.all(16),children:[
     Text('Game Terminal',style:Theme.of(context).textTheme.headlineSmall),
+    const SizedBox(height:4),
+    const Text('Manage the games catalog, menu pricing and console station names.'),
+    const SizedBox(height:16),
+    WebsiteRows(children:[
+      for(final tab in <(String,String,IconData)>[
+        ('Games Catalog','Installed titles',Icons.sports_esports_outlined),
+        ('Rates & Pricing','Menu tiers',Icons.currency_rupee_outlined),
+        ('Console Names','Station labels',Icons.desktop_windows_outlined),
+      ].indexed.map((e)=>(e.$2.$1,e.$2.$2,e.$2.$3,e.$1)))
+        ListTile(
+          selected:selectedTab==tab.$4,
+          selectedTileColor:const Color(0x244F63F0),
+          leading:Icon(tab.$3,size:18),
+          title:Text(tab.$1),subtitle:Text(tab.$2),
+          onTap:()=>setState(()=>selectedTab=tab.$4)),
+    ]),
     FutureBuilder<ShopConfiguration>(future:future=refreshOnShopChange(future,widget.repository.configuration),builder:(context,snapshot){
-      if(snapshot.hasError)return const Text('Game Terminal data unavailable. Pull to retry.');
+      if(snapshot.hasError)return const WebsiteStatusPanel('Game Terminal data unavailable',message:'Pull to retry.',icon:Icons.cloud_off_outlined);
       if(!snapshot.hasData)return const Center(child:CircularProgressIndicator());
       final config=snapshot.data!;
+      final visibleGames=config.games.where((g)=>g.toLowerCase().contains(gameQuery)).toList();
       final shop=ShopScope.of(context).snapshot;
       return Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
         const SizedBox(height:12),
-        Text('Games',style:Theme.of(context).textTheme.titleLarge),
-        for(final game in config.games) ListTile(title:Text(game),trailing:IconButton(icon:const Icon(Icons.delete_outline),tooltip:'Remove game',
+        if(selectedTab==0)...[
+        const WebsiteSectionTitle('Games'),
+        TextField(decoration:const InputDecoration(labelText:'Search catalog',prefixIcon:Icon(Icons.search)),
+          onChanged:(value)=>setState(()=>gameQuery=value.trim().toLowerCase())),
+        const SizedBox(height:12),
+        if(visibleGames.isEmpty)const WebsiteStatusPanel('No games match your search',
+          message:'Try another title.',icon:Icons.sports_esports_outlined),
+        if(visibleGames.isNotEmpty)WebsiteRows(children:[for(final game in visibleGames) ListTile(title:Text(game),trailing:IconButton(icon:const Icon(Icons.delete_outline),tooltip:'Remove game',
           onPressed:()async{
             final confirmed=await showDialog<bool>(context:context,builder:(dialog)=>AlertDialog(
               title:const Text('Remove game?'),content:Text(game),actions:[
@@ -37,20 +63,27 @@ class _GameTerminalPageState extends State<GameTerminalPage> with LiveShopData {
                 reload();
               });
             }
-          })),
+          }))]),
+        const SizedBox(height:12),
         FilledButton.icon(onPressed:()=>_addGame(config),icon:const Icon(Icons.add),label:const Text('Add game')),
+        ],
+        if(selectedTab==1)...[
         const SizedBox(height:24),
-        Text('Pricing',style:Theme.of(context).textTheme.titleLarge),
-        for(final entry in menuRateLabels.entries) ListTile(title:Text(entry.value),trailing:Text(money(config.menuRates[entry.key]??0))),
+        const WebsiteSectionTitle('Pricing'),
+        WebsiteRows(children:[for(final entry in menuRateLabels.entries) ListTile(title:Text(entry.value),trailing:Text(money(config.menuRates[entry.key]??0)))]),
+        const SizedBox(height:12),
         FilledButton.icon(onPressed:()=>_editRates(config),icon:const Icon(Icons.edit),label:const Text('Edit rates')),
         const SizedBox(height:24),
-        Text('Shop settings',style:Theme.of(context).textTheme.titleLarge),
+        const WebsiteSectionTitle('Shop settings'),
         ListTile(title:Text(config.cafeName),subtitle:Text('Controllers: ${config.totalControllers} · Gaming ${money(config.gamingRate)}/hr · VR ${money(config.vrRate)}/hr · Racing ${money(config.racingRate)}/hr')),
         OutlinedButton(onPressed:()=>_editSettings(config),child:const Text('Edit shop settings')),
+        ],
+        if(selectedTab==2)...[
         const SizedBox(height:24),
-        Text('Console names',style:Theme.of(context).textTheme.titleLarge),
-        if(shop!=null) for(final station in shop.stations) ListTile(title:Text(station.name),subtitle:Text(station.type),
-          trailing:IconButton(icon:const Icon(Icons.edit),tooltip:'Rename',onPressed:()=>_rename(station.id,station.name))),
+        const WebsiteSectionTitle('Console names'),
+        if(shop!=null) WebsiteRows(children:[for(final station in shop.stations) ListTile(title:Text(station.name),subtitle:Text(station.type),
+          trailing:IconButton(icon:const Icon(Icons.edit),tooltip:'Rename',onPressed:()=>_rename(station.id,station.name)))]),
+        ],
       ]);
     })
   ]));
@@ -107,14 +140,25 @@ class _CustomersPageState extends State<CustomersPage> with LiveShopData {
   @override Widget build(BuildContext context)=>RefreshIndicator(onRefresh:()async=>reload(),child:ListView(padding:const EdgeInsets.all(16),children:[
     Row(children:[Expanded(child:Text('Customers',style:Theme.of(context).textTheme.headlineSmall)),
       FilledButton.icon(onPressed:()=>_edit(null),icon:const Icon(Icons.add),label:const Text('Add'))]),
+    const SizedBox(height:16),
     TextField(controller:search,decoration:const InputDecoration(labelText:'Search name or phone',prefixIcon:Icon(Icons.search)),onChanged:(_)=>setState((){})),
     FutureBuilder<List<CustomerRecord>>(future:future=refreshOnShopChange(future,widget.repository.customers),builder:(context,snapshot){
-      if(snapshot.hasError)return const Text('Customers unavailable. Pull to retry.');
+      if(snapshot.hasError)return const WebsiteStatusPanel('Customers unavailable',message:'Pull to retry.',icon:Icons.cloud_off_outlined);
       if(!snapshot.hasData)return const Center(child:CircularProgressIndicator());
       final query=search.text.trim().toLowerCase();
       final visible=snapshot.data!.where((c)=>c.name.toLowerCase().contains(query)||(c.phone??'').contains(query));
-      return Column(children:[for(final c in visible) Card(child:ListTile(title:Text(c.name),subtitle:Text(c.phone??'No phone'),
-        trailing:IconButton(icon:const Icon(Icons.edit),onPressed:()=>_edit(c))))]);
+      if(visible.isEmpty)return const WebsiteStatusPanel('No customers found',message:'Customers matching your search will appear here.',icon:Icons.people_outline);
+      return Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
+        Text('${snapshot.data!.length} registered customers',
+          style:Theme.of(context).textTheme.bodySmall),
+        const SizedBox(height:12),
+        WebsiteRows(children:[for(final c in visible) ListTile(
+          leading:CircleAvatar(radius:14,backgroundColor:const Color(0xFF141B2B),
+            child:Text(c.name.isEmpty?'?':c.name[0].toUpperCase(),
+              style:const TextStyle(fontSize:11))),
+          title:Text(c.name),subtitle:Text(c.phone??'No phone'),
+          trailing:IconButton(icon:const Icon(Icons.edit),onPressed:()=>_edit(c)))]),
+      ]);
     }),
   ]));
   Future<void> _edit(CustomerRecord? old) async {
@@ -142,6 +186,9 @@ class _ExpensesPageState extends State<ExpensesPage> with LiveShopData {
   @override Widget build(BuildContext context)=>RefreshIndicator(onRefresh:()async=>reload(),child:ListView(padding:const EdgeInsets.all(16),children:[
     Row(children:[Expanded(child:Text('Expenses',style:Theme.of(context).textTheme.headlineSmall)),
       FilledButton.icon(onPressed:()=>_edit(null),icon:const Icon(Icons.add),label:const Text('Add'))]),
+    const SizedBox(height:4),
+    const Text('Shop expenses — electricity, staff, supplies, and more.'),
+    const SizedBox(height:16),
     Wrap(spacing:8,children:[
       for(final option in <(String,int?)>[('All',null),('Today',0),('7 days',6),('30 days',29)])
         ChoiceChip(label:Text(option.$1),selected:recentDays==option.$2,onSelected:(_)=>setState(()=>recentDays=option.$2)),
@@ -156,7 +203,7 @@ class _ExpensesPageState extends State<ExpensesPage> with LiveShopData {
     TextField(controller:search,onChanged:(_)=>setState((){}),
       decoration:const InputDecoration(labelText:'Search category or notes',prefixIcon:Icon(Icons.search))),
     FutureBuilder<List<ExpenseRecord>>(future:future=refreshOnShopChange(future,widget.repository.expenses),builder:(context,snapshot){
-      if(snapshot.hasError)return const Text('Expenses unavailable. Pull to retry.');
+      if(snapshot.hasError)return const WebsiteStatusPanel('Expenses unavailable',message:'Pull to retry.',icon:Icons.cloud_off_outlined);
       if(!snapshot.hasData)return const Center(child:CircularProgressIndicator());
       final cutoff=recentDays==null?null:DateTime.now().subtract(Duration(days:recentDays!));
       final query=search.text.trim().toLowerCase();
@@ -166,14 +213,20 @@ class _ExpensesPageState extends State<ExpensesPage> with LiveShopData {
         &&(cutoff==null||e.date.compareTo(dateOnly(cutoff))>=0)).toList();
       final total=visible.fold<int>(0,(sum,e)=>sum+e.amount);
       return Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
-        Text('Total ${money(total)} · ${visible.length} expenses'),
-        for(final e in visible)Card(child:ListTile(title:Text('${e.category} · ${money(e.amount)}'),
+        WebsiteMiniStat(label:'Total',value:money(total)),
+        const SizedBox(height:16),
+        if(visible.isEmpty) const WebsiteStatusPanel('No expenses match your filters',
+          message:'Try a different search term or clear the filters above.',
+          icon:Icons.account_balance_wallet_outlined),
+        if(visible.isNotEmpty)WebsiteRows(children:[for(final e in visible)ListTile(
+          title:Text('${e.category} · ${money(e.amount)}'),
           subtitle:Text('${e.date}${e.notes==null?'':' · ${e.notes}'}'),
           trailing:PopupMenuButton<String>(onSelected:(v){
             if(v=='edit')_edit(e);
             if(v=='delete')_delete(e);
           },itemBuilder:(_)=>const [PopupMenuItem(value:'edit',child:Text('Edit')),
-            PopupMenuItem(value:'delete',child:Text('Delete'))])))]);
+            PopupMenuItem(value:'delete',child:Text('Delete'))]))]),
+      ]);
     })
   ]));
   Future<void> _edit(ExpenseRecord? old) async {
@@ -216,8 +269,11 @@ class _TransactionsPageState extends State<TransactionsPage> with LiveShopData {
   void reload()=>setState(()=>future=widget.repository.transactions());
   @override Widget build(BuildContext context)=>RefreshIndicator(onRefresh:()async=>reload(),child:ListView(padding:const EdgeInsets.all(16),children:[
     Text('Transactions',style:Theme.of(context).textTheme.headlineSmall),
+    const SizedBox(height:4),
+    const Text('Completed payments and receipts.'),
+    const SizedBox(height:16),
     FutureBuilder<List<TransactionRecord>>(future:future=refreshOnShopChange(future,widget.repository.transactions),builder:(context,snapshot){
-      if(snapshot.hasError)return const Text('Transactions unavailable. Pull to retry.');
+      if(snapshot.hasError)return const WebsiteStatusPanel('Transactions unavailable',message:'Pull to retry.',icon:Icons.cloud_off_outlined);
       if(!snapshot.hasData)return const Center(child:CircularProgressIndicator());
       final all=snapshot.data!;
       final stations={for(final t in all)t.stationId:t.station};
@@ -236,7 +292,11 @@ class _TransactionsPageState extends State<TransactionsPage> with LiveShopData {
           t.playCharges,t.snacksTotal,t.discount,t.total]
       ];
       return Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
-        Text("Today's receipts: ${todaySales.length} · Revenue: ${money(todayTotal)}"),
+        Wrap(spacing:10,runSpacing:10,children:[
+          WebsiteMiniStat(label:'Today',value:money(todayTotal)),
+          WebsiteMiniStat(label:'Receipts',value:'${all.length}'),
+        ]),
+        const SizedBox(height:16),
         TextField(controller:search,onChanged:(_)=>setState((){}),
           decoration:const InputDecoration(labelText:'Search customer, receipt or station',prefixIcon:Icon(Icons.search))),
         Wrap(spacing:8,children:[
@@ -260,9 +320,21 @@ class _TransactionsPageState extends State<TransactionsPage> with LiveShopData {
           TextButton(onPressed:()=>shareCsv(context,'transactions.csv',rows),child:const Text('Export CSV')),
           TextButton(onPressed:()=>sharePdf('transactions.pdf','Transactions',rows),child:const Text('Export PDF')),
         ]),
-        for(final t in visible)Card(child:ListTile(title:Text('${t.receipt} · ${money(t.total)}'),
-          subtitle:Text('${t.customer} · ${t.station} · ${t.paymentMethod} · ${dateOnly(t.date.toLocal())}'),
-          onTap:()=>_receipt(t),trailing:const Icon(Icons.receipt_long))),
+        if(visible.isEmpty) const WebsiteStatusPanel('No transactions match your filters',
+          message:'Try a different search term or clear the filters above.',
+          icon:Icons.receipt_long_outlined),
+        if(visible.isNotEmpty)WebsiteRows(children:[for(final t in visible)ListTile(
+          leading:Column(mainAxisAlignment:MainAxisAlignment.center,mainAxisSize:MainAxisSize.min,
+            children:[Text('${t.date.toLocal().day}/${t.date.toLocal().month}',
+              style:const TextStyle(fontSize:12,fontWeight:FontWeight.w600)),
+              Text(t.date.toLocal().year.toString(),
+                style:Theme.of(context).textTheme.bodySmall)]),
+          title:Text(t.customer,overflow:TextOverflow.ellipsis),
+          subtitle:Text('${t.receipt} · ${t.station} · ${t.mode}'),
+          onTap:()=>_receipt(t),
+          trailing:Column(mainAxisAlignment:MainAxisAlignment.center,mainAxisSize:MainAxisSize.min,
+            children:[Text(money(t.total),style:const TextStyle(fontWeight:FontWeight.w600)),
+              Text(t.paymentMethod,style:Theme.of(context).textTheme.bodySmall)]))]),
       ]);
     })
   ]));

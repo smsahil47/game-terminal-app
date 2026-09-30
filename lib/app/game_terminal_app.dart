@@ -7,6 +7,7 @@ import '../data/repositories/operations_repository.dart';
 import '../data/repositories/website_repository.dart';
 import '../features/management/management_pages.dart';
 import '../features/management/report_pages.dart';
+import '../features/management/reception_website_dashboard.dart';
 import '../features/operations/operations_pages.dart';
 import '../features/auth/auth_controller.dart';
 import '../features/auth/auth_pages.dart';
@@ -85,7 +86,7 @@ class _GameTerminalAppState extends State<GameTerminalApp>
           child: child,
         ),
         routes: [
-          GoRoute(path: '/dashboard', builder: (_, _) => ReceptionDashboardPage(operations: widget.operations,website:widget.website)),
+          GoRoute(path: '/dashboard', builder: (_, _) => ReceptionWebsiteDashboardPage(operations: widget.operations,website:widget.website)),
           GoRoute(path: '/owner', builder: (_, _) => OwnerBusinessPage(operations:widget.operations)),
           GoRoute(path: '/stations', builder: (_, _) => const StationsPage()),
           GoRoute(path: '/owner/operations', builder: (_, _) => OwnerOperationsPage(operations:widget.operations)),

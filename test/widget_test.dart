@@ -21,7 +21,7 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      expect(find.text('Staff sign in'), findsOneWidget);
+      expect(find.text('Staff access only'), findsOneWidget);
       expect(
         tester
             .widget<FilledButton>(find.widgetWithText(FilledButton, 'Sign in'))
@@ -67,15 +67,21 @@ void main() {
       await tester.enterText(find.byType(TextFormField).at(1), 'password');
       await tester.tap(find.widgetWithText(FilledButton, 'Sign in'));
       await tester.pumpAndSettle();
-      expect(find.text('Test shop'), findsOneWidget);
+      expect(find.text('Consoles free'), findsOneWidget);
       expect(find.text('4 / 6'), findsOneWidget);
+      await tester.tap(find.byTooltip('Open menu'));
+      await tester.pumpAndSettle();
+      await tester.drag(find.byType(Drawer), const Offset(0, -260));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('Stations'));
       await tester.pumpAndSettle();
       expect(find.text('Station 1'), findsOneWidget);
-      expect(find.text('Station 2'), findsOneWidget);
       await tester.tap(find.widgetWithText(ChoiceChip, 'Available'));
       await tester.pumpAndSettle();
       expect(find.text('Station 2'), findsNothing);
+      await tester.tap(find.widgetWithText(ChoiceChip, 'In use'));
+      await tester.pumpAndSettle();
+      expect(find.text('Station 2'), findsOneWidget);
       await tester.pumpWidget(const SizedBox());
     },
   );
@@ -95,12 +101,10 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      expect(find.text('Test shop'), findsOneWidget);
-      expect(
-        find.text('Owner access · Shop operations are read-only'),
-        findsOneWidget,
-      );
-      await tester.tap(find.text('Operations'));
+      expect(find.text('Business Overview'), findsOneWidget);
+      await tester.tap(find.byTooltip('Open menu'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Shop Operations'));
       await tester.pumpAndSettle();
       expect(find.text('Station 1'), findsOneWidget);
       expect(find.text('Start session'), findsNothing);
@@ -125,6 +129,6 @@ void main() {
     expect(shop.loads, 0);
     await tester.tap(find.text('Sign out'));
     await tester.pumpAndSettle();
-    expect(find.text('Staff sign in'), findsOneWidget);
+    expect(find.text('Staff access only'), findsOneWidget);
   });
 }

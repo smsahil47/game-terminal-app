@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../core/theme/app_theme.dart';
 import 'auth_controller.dart';
 
 class LoginPage extends StatefulWidget {
@@ -41,123 +42,135 @@ class _LoginPageState extends State<LoginPage> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    body: SafeArea(
-      child: Center(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 420),
-            child: ListenableBuilder(
-              listenable: widget.auth,
-              builder: (context, _) => AutofillGroup(
-                child: Form(
-                  key: _form,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Icon(
-                        Icons.sports_esports_rounded,
-                        size: 60,
-                        color: Theme.of(context).colorScheme.primary,
-                      ),
-                      const SizedBox(height: 16),
-                      Text(
-                        'GAME TERMINAL',
-                        textAlign: TextAlign.center,
-                        style: Theme.of(context).textTheme.headlineSmall
-                            ?.copyWith(
-                              fontWeight: FontWeight.w800,
-                              letterSpacing: 2,
-                            ),
-                      ),
-                      const SizedBox(height: 8),
-                      const Text(
-                        'Your shop. Ready to play.',
-                        textAlign: TextAlign.center,
-                      ),
-                      const SizedBox(height: 40),
-                      Text(
-                        'Staff sign in',
-                        style: Theme.of(context).textTheme.titleLarge,
-                      ),
-                      const SizedBox(height: 8),
-                      const Text(
-                        'Use your assigned Owner or Receptionist account.',
-                      ),
-                      const SizedBox(height: 24),
-                      if (!widget.connected) ...[
-                        _Notice(
-                          message: widget.startupIssue ?? 'Staff sign-in is not connected yet. Your administrator will enable access when the test environment is ready.',
-                        ),
-                        const SizedBox(height: 16),
-                      ],
-                      TextFormField(
-                        controller: _email,
-                        enabled: widget.connected && !widget.auth.busy,
-                        keyboardType: TextInputType.emailAddress,
-                        textInputAction: TextInputAction.next,
-                        autofillHints: const [AutofillHints.username],
-                        autocorrect: false,
-                        decoration: const InputDecoration(
-                          labelText: 'Email',
-                          prefixIcon: Icon(Icons.mail_outline),
-                        ),
-                        validator: (value) =>
-                            value == null ||
-                                !RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$')
-                                    .hasMatch(value.trim())
-                            ? 'Enter a valid email address.'
-                            : null,
-                      ),
-                      const SizedBox(height: 16),
-                      TextFormField(
-                        controller: _password,
-                        enabled: widget.connected && !widget.auth.busy,
-                        obscureText: _obscure,
-                        enableSuggestions: false,
-                        autocorrect: false,
-                        autofillHints: const [AutofillHints.password],
-                        onFieldSubmitted: (_) => _submit(),
-                        decoration: InputDecoration(
-                          labelText: 'Password',
-                          prefixIcon: const Icon(Icons.lock_outline),
-                          suffixIcon: IconButton(
-                            tooltip: _obscure
-                                ? 'Show password'
-                                : 'Hide password',
-                            onPressed: () =>
-                                setState(() => _obscure = !_obscure),
-                            icon: Icon(
-                              _obscure
-                                  ? Icons.visibility_outlined
-                                  : Icons.visibility_off_outlined,
-                            ),
+    body: Container(
+      decoration: const BoxDecoration(
+        image: DecorationImage(
+          image: AssetImage('assets/brand/background.webp'),
+          fit: BoxFit.cover,
+          opacity: .5,
+        ),
+      ),
+      child: SafeArea(
+        child: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 28),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 390),
+              child: ListenableBuilder(
+                listenable: widget.auth,
+                builder: (context, _) => AutofillGroup(
+                  child: Form(
+                    key: _form,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Center(
+                          child: Image.asset(
+                            'assets/brand/logo.webp',
+                            width: 128,
+                            height: 128,
                           ),
                         ),
-                        validator: (value) => value == null || value.isEmpty
-                            ? 'Enter your password.'
-                            : null,
-                      ),
-                      if (widget.auth.message != null) ...[
-                        const SizedBox(height: 16),
-                        _Notice(message: widget.auth.message!),
-                      ],
-                      const SizedBox(height: 24),
-                      FilledButton(
-                        onPressed: widget.connected && !widget.auth.busy
-                            ? _submit
-                            : null,
-                        child: Text(
-                          widget.auth.busy ? 'Signing in…' : 'Sign in',
+                        const SizedBox(height: 28),
+                        Container(
+                          padding: const EdgeInsets.all(24),
+                          decoration: BoxDecoration(
+                            color: AppTheme.surface.withValues(alpha: .96),
+                            border: Border.all(color: AppTheme.border2),
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              Text(
+                                'Sign in',
+                                style: Theme.of(context).textTheme.titleLarge,
+                              ),
+                              const SizedBox(height: 5),
+                              const Text(
+                                'Staff access only',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  color: AppTheme.textSecondary,
+                                ),
+                              ),
+                              const SizedBox(height: 24),
+                              if (!widget.connected) ...[
+                                _Notice(
+                                  message: widget.startupIssue ?? 'Staff sign-in is not connected yet. Your administrator will enable access when the test environment is ready.',
+                                ),
+                                const SizedBox(height: 16),
+                              ],
+                              TextFormField(
+                                controller: _email,
+                                enabled: widget.connected && !widget.auth.busy,
+                                keyboardType: TextInputType.emailAddress,
+                                textInputAction: TextInputAction.next,
+                                autofillHints: const [AutofillHints.username],
+                                autocorrect: false,
+                                decoration: const InputDecoration(
+                                  labelText: 'Email address',
+                                ),
+                                validator: (value) =>
+                                    value == null ||
+                                        !RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$')
+                                            .hasMatch(value.trim())
+                                    ? 'Enter a valid email address.'
+                                    : null,
+                              ),
+                              const SizedBox(height: 16),
+                              TextFormField(
+                                controller: _password,
+                                enabled: widget.connected && !widget.auth.busy,
+                                obscureText: _obscure,
+                                enableSuggestions: false,
+                                autocorrect: false,
+                                autofillHints: const [AutofillHints.password],
+                                onFieldSubmitted: (_) => _submit(),
+                                decoration: InputDecoration(
+                                  labelText: 'Password',
+                                  suffixIcon: IconButton(
+                                    tooltip: _obscure
+                                        ? 'Show password'
+                                        : 'Hide password',
+                                    onPressed: () =>
+                                        setState(() => _obscure = !_obscure),
+                                    icon: Icon(
+                                      _obscure
+                                          ? Icons.visibility_outlined
+                                          : Icons.visibility_off_outlined,
+                                    ),
+                                  ),
+                                ),
+                                validator: (value) =>
+                                    value == null || value.isEmpty
+                                    ? 'Enter your password.'
+                                    : null,
+                              ),
+                              if (widget.auth.message != null) ...[
+                                const SizedBox(height: 16),
+                                _Notice(message: widget.auth.message!),
+                              ],
+                              const SizedBox(height: 24),
+                              FilledButton(
+                                onPressed: widget.connected && !widget.auth.busy
+                                    ? _submit
+                                    : null,
+                                child: Text(
+                                  widget.auth.busy ? 'Signing in…' : 'Sign in',
+                                ),
+                              ),
+                              const SizedBox(height: 20),
+                              Text(
+                                'Owner and receptionist accounts are managed by the shop administrator.',
+                                textAlign: TextAlign.center,
+                                style: Theme.of(context).textTheme.bodySmall,
+                              ),
+                            ],
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 24),
-                      Text(
-                        'Accounts are created by the shop administrator.',
-                        textAlign: TextAlign.center,
-                        style: Theme.of(context).textTheme.bodySmall,
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
               ),

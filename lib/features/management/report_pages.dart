@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../app/staff_shell.dart';
+import '../../core/theme/website_widgets.dart';
 import '../../data/models/operations.dart';
 import '../../data/models/shop_snapshot.dart';
 import '../../data/models/website_models.dart';
@@ -25,7 +26,7 @@ class _DailyReportPageState extends State<DailyReportPage> with LiveShopData {
     TextButton(onPressed:()async{final d=await showDatePicker(context:context,initialDate:date,firstDate:DateTime(2020),lastDate:DateTime(2100));
       if(d!=null){date=d;reload();}},child:Text(dateOnly(date))),
     FutureBuilder<ReportData>(future:future=refreshOnShopChange(future,()=>widget.operations.report(date,date)),builder:(context,snapshot){
-      if(snapshot.hasError)return const Text('Daily report unavailable. Pull to retry.');
+      if(snapshot.hasError)return const WebsiteStatusPanel('Daily report unavailable',message:'Pull to retry.',icon:Icons.cloud_off_outlined);
       if(!snapshot.hasData)return const Center(child:CircularProgressIndicator());
       final data=snapshot.data!;
       final gaming=data.sales.where((s)=>s.mode==SessionMode.gaming).fold<int>(0,(sum,s)=>sum+s.total);
@@ -34,8 +35,8 @@ class _DailyReportPageState extends State<DailyReportPage> with LiveShopData {
         ['Other Income',data.salesTotal-gaming],['Booking Revenue',data.advanceTotal],
         ['Total Expenses',data.expenseTotal],['Net Amount',data.net],['Transactions',data.sales.length]];
       return Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
-        for(final row in rows.skip(1))ListTile(title:Text(row[0].toString()),trailing:Text(
-          row[0]=='Transactions'?row[1].toString():money(row[1] as int))),
+        WebsiteRows(children:[for(final row in rows.skip(1))ListTile(title:Text(row[0].toString()),trailing:Text(
+          row[0]=='Transactions'?row[1].toString():money(row[1] as int)))]),
         Row(children:[
           TextButton(onPressed:()=>shareCsv(context,'daily-report-${dateOnly(date)}.csv',rows),child:const Text('Export CSV')),
           TextButton(onPressed:()=>sharePdf('daily-report-${dateOnly(date)}.pdf','Daily Report ${dateOnly(date)}',rows),child:const Text('Export PDF')),
@@ -70,7 +71,7 @@ class _OwnerBusinessPageState extends State<OwnerBusinessPage> with LiveShopData
       }),
     ]),
     FutureBuilder<ReportData>(future:future=refreshOnShopChange(future,()=>widget.operations.report(start,end)),builder:(context,snapshot){
-      if(snapshot.hasError)return const Text('Business data unavailable. Pull to retry.');
+      if(snapshot.hasError)return const WebsiteStatusPanel('Business data unavailable',message:'Pull to retry.',icon:Icons.cloud_off_outlined);
       if(!snapshot.hasData)return const Center(child:CircularProgressIndicator());
       final data=snapshot.data!;
       final gaming=data.sales.where((s)=>s.mode==SessionMode.gaming).fold<int>(0,(sum,s)=>sum+s.total);
@@ -79,8 +80,6 @@ class _OwnerBusinessPageState extends State<OwnerBusinessPage> with LiveShopData
       final dates=<String,int>{};
       for(final sale in data.sales){final day=dateOnly(sale.date.toLocal());dates[day]=(dates[day]??0)+sale.total;}
       final sortedDates=dates.keys.toList()..sort();
-      final maxRevenue=dates.values.fold<int>(1,(a,b)=>a>b?a:b);
-      final maxExpense=expenses.values.fold<int>(1,(a,b)=>a>b?a:b);
       final rows=<List<Object?>>[
         ['Metric','Value'],['Total sales',data.salesTotal],['Gaming revenue',gaming],
         ['Other income',data.salesTotal-gaming],['Booking revenue',data.advanceTotal],
@@ -88,19 +87,32 @@ class _OwnerBusinessPageState extends State<OwnerBusinessPage> with LiveShopData
         ['Revenue by period',''],for(final day in sortedDates)[day,dates[day]],
         ['Expenses by category',''],for(final e in expenses.entries)[e.key,e.value]];
       return Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
-        Wrap(spacing:8,runSpacing:8,children:[
-          for(final e in rows.skip(1).take(7))Chip(label:Text('${e[0]}: ${e[0]=='Transactions'?e[1]:money(e[1] as int)}'))
-        ]),
+        if(!widget.reportsOnly)...[
+          Wrap(spacing:8,runSpacing:8,children:[
+            WebsiteMetricCard(label:'Total Sales',value:money(data.salesTotal),icon:Icons.trending_up),
+            WebsiteMetricCard(label:'Net Revenue',value:money(data.net),icon:Icons.account_balance_wallet_outlined),
+            WebsiteMetricCard(label:'Total Expenses',value:money(data.expenseTotal),icon:Icons.trending_down),
+            WebsiteMetricCard(label:'Transactions',value:'${data.sales.length}',icon:Icons.receipt_long_outlined),
+          ]),
+          const SizedBox(height:12),
+          Wrap(spacing:8,runSpacing:8,children:[
+            WebsiteMetricCard(label:'Gaming Revenue',value:money(gaming),icon:Icons.sports_esports_outlined),
+            WebsiteMetricCard(label:'Other Revenue',value:money(data.salesTotal-gaming),icon:Icons.wallet_outlined),
+            WebsiteMetricCard(label:'Booking Revenue',value:money(data.advanceTotal),icon:Icons.calendar_month_outlined),
+          ]),
+        ] else WebsiteRows(children:[for(final e in rows.skip(1).take(7))
+          ListTile(title:Text(e[0].toString()),trailing:Text(
+            e[0]=='Transactions'?e[1].toString():money(e[1] as int)))]),
         const SizedBox(height:12),
-        Text('Revenue trend',style:Theme.of(context).textTheme.titleMedium),
-        if(sortedDates.isEmpty)const Text('No sales recorded in this period.'),
-        for(final day in sortedDates)_Bar(label:day,value:dates[day]!,max:maxRevenue),
+        const WebsiteSectionTitle('Revenue trend'),
+        if(sortedDates.isEmpty)const WebsiteStatusPanel('No sales recorded in this period.'),
+        if(sortedDates.isNotEmpty)WebsiteRevenueChart(values:[for(final day in sortedDates)(day,dates[day]!)]),
         const SizedBox(height:16),
-        Text('Expenses by category',style:Theme.of(context).textTheme.titleMedium),
-        if(expenses.isEmpty)const Text('No expenses recorded in this period.'),
-        for(final e in expenses.entries)_Bar(label:e.key,value:e.value,max:maxExpense),
+        const WebsiteSectionTitle('Expenses by category'),
+        if(expenses.isEmpty)const WebsiteStatusPanel('No expenses recorded in this period.'),
+        if(expenses.isNotEmpty)WebsiteExpenseChart(values:[for(final e in expenses.entries)(e.key,e.value)]),
         const SizedBox(height:16),
-        Text('Recent transactions',style:Theme.of(context).textTheme.titleMedium),
+        const WebsiteSectionTitle('Recent transactions'),
         for(final sale in data.sales.take(widget.reportsOnly?data.sales.length:8))
           ListTile(title:Text('${sale.receipt} · ${money(sale.total)}'),
             subtitle:Text('${sale.customer} · ${sale.station} · ${sale.method}')),
@@ -112,15 +124,6 @@ class _OwnerBusinessPageState extends State<OwnerBusinessPage> with LiveShopData
     })
   ]));
 }
-class _Bar extends StatelessWidget {
-  const _Bar({required this.label,required this.value,required this.max});
-  final String label;final int value,max;
-  @override Widget build(BuildContext context)=>Padding(padding:const EdgeInsets.symmetric(vertical:5),
-    child:Row(children:[SizedBox(width:98,child:Text(label,overflow:TextOverflow.ellipsis)),
-      Expanded(child:LinearProgressIndicator(value:value/max,minHeight:11)),
-      const SizedBox(width:8),Text(money(value))]));
-}
-
 class OwnerOperationsPage extends StatefulWidget {
   const OwnerOperationsPage({super.key,required this.operations});
   final OperationsRepository operations;

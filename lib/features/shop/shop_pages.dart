@@ -5,8 +5,10 @@ import 'package:go_router/go_router.dart';
 
 import '../../app/staff_shell.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/theme/website_widgets.dart';
 import '../../data/models/shop_snapshot.dart';
 import 'shop_controller.dart';
+import 'ps5_model_stage.dart';
 
 class ShopOverviewPage extends StatelessWidget {
   const ShopOverviewPage({super.key});
@@ -16,8 +18,14 @@ class ShopOverviewPage extends StatelessWidget {
       Text(data.cafeName, style: Theme.of(context).textTheme.headlineSmall),
       const SizedBox(height: 6),
       const Text('Shop overview'),
-      Align(alignment:Alignment.centerLeft,child:FilledButton.icon(
-        onPressed:()=>context.go('/sessions'),icon:const Icon(Icons.play_arrow),label:const Text('Start session'))),
+      Align(
+        alignment: Alignment.centerLeft,
+        child: FilledButton.icon(
+          onPressed: () => context.go('/sessions'),
+          icon: const Icon(Icons.play_arrow),
+          label: const Text('Start session'),
+        ),
+      ),
       const SizedBox(height: 24),
       Wrap(
         spacing: 12,
@@ -71,6 +79,186 @@ class ShopOverviewPage extends StatelessWidget {
   );
 }
 
+class WebsiteDashboardPage extends StatelessWidget {
+  const WebsiteDashboardPage({
+    super.key,
+    required this.todayBookings,
+    required this.todayRevenue,
+    required this.upcoming,
+    this.summaryError,
+  });
+  final int todayBookings;
+  final int todayRevenue;
+  final List<(String, String, String)> upcoming;
+  final String? summaryError;
+
+  @override
+  Widget build(BuildContext context) => _ShopBody(
+    builder: (data) {
+      final hour = DateTime.now().hour;
+      final greeting = hour < 12
+          ? 'Good morning'
+          : hour < 17
+          ? 'Good afternoon'
+          : 'Good evening';
+      final live = data.sessions.length;
+      return [
+        Container(
+          height: 132,
+          width: double.infinity,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            image: const DecorationImage(
+              image: AssetImage('assets/brand/ps5.webp'),
+              alignment: Alignment.centerRight,
+              fit: BoxFit.cover,
+              opacity: .36,
+            ),
+          ),
+          child: Container(
+            padding: const EdgeInsets.all(18),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(12),
+              gradient: const LinearGradient(
+                begin: Alignment.centerLeft,
+                end: Alignment.centerRight,
+                colors: [
+                  AppTheme.background,
+                  Color(0x9905070E),
+                  Color(0x1105070E),
+                ],
+              ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  greeting,
+                  style: const TextStyle(
+                    fontSize: 23,
+                    fontWeight: FontWeight.w700,
+                    color: AppTheme.text,
+                  ),
+                ),
+                const SizedBox(height: 5),
+                Text(
+                  live == 0
+                      ? "No sessions running. Here's today's overview."
+                      : '$live session${live == 1 ? '' : 's'} running right now.',
+                  style: const TextStyle(
+                    fontSize: 13,
+                    color: AppTheme.textSecondary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 18),
+        if (summaryError != null) ...[
+          WebsiteStatusPanel(summaryError!, icon: Icons.cloud_off_outlined),
+          const SizedBox(height: 14),
+        ],
+        Wrap(
+          spacing: 10,
+          runSpacing: 10,
+          children: [
+            _Metric(
+              label: 'Consoles free',
+              value: '${data.available} / ${data.stations.length}',
+              icon: Icons.desktop_windows_outlined,
+            ),
+            _Metric(
+              label: 'Controllers free',
+              value: '${data.controllersFree} / ${data.totalControllers}',
+              icon: Icons.sports_esports_outlined,
+            ),
+            _Metric(
+              label: 'Live sessions',
+              value: '$live',
+              icon: Icons.play_circle_outline,
+            ),
+            _Metric(
+              label: "Today's bookings",
+              value: summaryError == null ? '$todayBookings' : '—',
+              icon: Icons.calendar_month_outlined,
+            ),
+            _Metric(
+              label: "Today's revenue",
+              value: summaryError == null ? '₹$todayRevenue' : '—',
+              icon: Icons.account_balance_wallet_outlined,
+            ),
+          ],
+        ),
+        const SizedBox(height: 26),
+        Row(
+          children: [
+            const Expanded(
+              child: Text(
+                'STATIONS',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 1.4,
+                  color: AppTheme.textSecondary,
+                ),
+              ),
+            ),
+            Text(
+              '${data.available} available · $live live',
+              style: const TextStyle(fontSize: 11, color: AppTheme.textMuted),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        if (data.stations.isEmpty)
+          const _Empty(
+            'No stations',
+            'Stations will appear here when available.',
+          ),
+        for (final station in data.stations)
+          _StationCard(
+            station: station,
+            sessions: data.sessions
+                .where((s) => s.stationId == station.id)
+                .toList(),
+          ),
+        const SizedBox(height: 20),
+        const Text(
+          'UPCOMING TODAY',
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 1.4,
+            color: AppTheme.textSecondary,
+          ),
+        ),
+        const SizedBox(height: 10),
+        if (upcoming.isEmpty)
+          const _Empty(
+            'No upcoming bookings',
+            'Confirmed bookings for today will appear here.',
+          ),
+        for (final item in upcoming)
+          Card(
+            child: ListTile(
+              leading: Text(
+                item.$1,
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              title: Text(item.$2),
+              subtitle: Text(item.$3),
+            ),
+          ),
+      ];
+    },
+  );
+}
+
 class StationsPage extends StatefulWidget {
   const StationsPage({super.key});
   @override
@@ -86,10 +274,20 @@ class _StationsPageState extends State<StationsPage> {
           .where((s) => filter == null || s.status == filter)
           .toList();
       return [
-        Row(children:[
-          Expanded(child:Text('Stations', style: Theme.of(context).textTheme.headlineSmall)),
-          TextButton(onPressed:()=>context.go('/station-details'),child:const Text('Rates & usage')),
-        ]),
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                'Stations',
+                style: Theme.of(context).textTheme.headlineSmall,
+              ),
+            ),
+            TextButton(
+              onPressed: () => context.go('/station-details'),
+              child: const Text('Rates & usage'),
+            ),
+          ],
+        ),
         const SizedBox(height: 6),
         const Text('Availability and current sessions across the shop.'),
         const SizedBox(height: 20),
@@ -198,19 +396,39 @@ class _Metric extends StatelessWidget {
   final IconData icon;
   @override
   Widget build(BuildContext context) => SizedBox(
-    width: 160,
+    width: (MediaQuery.sizeOf(context).width - 50).clamp(0, 360) / 2,
     child: Card(
       margin: EdgeInsets.zero,
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(14),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Icon(icon, color: AppTheme.accent, size: 22),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    label,
+                    style: const TextStyle(
+                      fontSize: 11.5,
+                      color: AppTheme.textSecondary,
+                    ),
+                  ),
+                ),
+                Icon(icon, color: AppTheme.textMuted, size: 15),
+              ],
+            ),
             const SizedBox(height: 16),
-            Text(value, style: Theme.of(context).textTheme.headlineSmall),
-            const SizedBox(height: 4),
-            Text(label),
+            Text(
+              value,
+              style: const TextStyle(
+                fontSize: 22,
+                height: 1.0,
+                fontWeight: FontWeight.w600,
+                color: AppTheme.text,
+                fontFeatures: [FontFeature.tabularFigures()],
+              ),
+            ),
           ],
         ),
       ),
@@ -238,23 +456,36 @@ class _StationCard extends StatelessWidget {
           children: [
             Row(
               children: [
-                const Icon(Icons.sports_esports_outlined),
-                const SizedBox(width: 12),
                 Expanded(
                   child: Text(
                     station.name,
                     style: Theme.of(context).textTheme.titleMedium,
                   ),
                 ),
-                Flexible(
-                  child: Text(
-                    station.status.label,
-                    style: TextStyle(color: color),
+                Container(
+                  width: 6,
+                  height: 6,
+                  decoration: BoxDecoration(
+                    color: color,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  station.status == StationStatus.inUse
+                      ? 'Live'
+                      : station.status.label,
+                  style: TextStyle(
+                    color: color,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 12),
+            const Ps5ModelStage(),
+            const SizedBox(height: 12),
             Text(
               station.type == 'PS5_MULTI'
                   ? 'Gaming · VR · Racing · Racing + VR'
@@ -263,6 +494,32 @@ class _StationCard extends StatelessWidget {
             for (final session in sessions) ...[
               const Divider(height: 28),
               _SessionDetails(session: session),
+            ],
+            if (station.status == StationStatus.available) ...[
+              const SizedBox(height: 14),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  onPressed: () => context.go('/sessions'),
+                  icon: const Icon(Icons.play_arrow, size: 17),
+                  label: const Text('Start Session'),
+                ),
+              ),
+            ],
+            if (station.status == StationStatus.maintenance) ...[
+              const SizedBox(height: 14),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: AppTheme.warning.withValues(alpha: .1),
+                  borderRadius: BorderRadius.circular(9),
+                ),
+                child: const Text(
+                  'Station unavailable',
+                  style: TextStyle(fontSize: 12, color: AppTheme.warning),
+                ),
+              ),
             ],
           ],
         ),
@@ -344,16 +601,9 @@ class _Empty extends StatelessWidget {
   const _Empty(this.title, this.message);
   final String title, message;
   @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.symmetric(vertical: 40),
-    child: Column(
-      children: [
-        const Icon(Icons.sports_esports_outlined, size: 40),
-        const SizedBox(height: 16),
-        Text(title, style: Theme.of(context).textTheme.titleMedium),
-        const SizedBox(height: 8),
-        Text(message, textAlign: TextAlign.center),
-      ],
-    ),
+  Widget build(BuildContext context) => WebsiteStatusPanel(
+    title,
+    message: message,
+    icon: Icons.sports_esports_outlined,
   );
 }

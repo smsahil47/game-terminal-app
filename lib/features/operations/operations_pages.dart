@@ -5,6 +5,7 @@ import 'package:share_plus/share_plus.dart';
 
 import '../../app/staff_shell.dart';
 import '../../core/billing/billing.dart';
+import '../../core/theme/website_widgets.dart';
 import '../../data/models/app_role.dart';
 import '../../data/models/operations.dart';
 import '../../data/models/shop_snapshot.dart';
@@ -41,9 +42,9 @@ class _SessionsPageState extends State<SessionsPage> with LiveShopData {
         if(widget.role.canOperate && shop!=null) FilledButton.icon(onPressed:()=>_start(context,shop),icon:const Icon(Icons.add),label:const Text('Start'))]),
       const SizedBox(height:12),
       FutureBuilder<List<SessionDetail>>(future:future=refreshOnShopChange(future,widget.repository.sessions),builder:(context,snapshot){
-        if(snapshot.hasError) return const Text('Sessions unavailable. Pull to retry.');
+        if(snapshot.hasError) return const WebsiteStatusPanel('Sessions unavailable',message:'Pull to retry.',icon:Icons.cloud_off_outlined);
         if(!snapshot.hasData) return const Center(child:CircularProgressIndicator());
-        if(snapshot.data!.isEmpty) return const Text('No active sessions.');
+        if(snapshot.data!.isEmpty) return const WebsiteStatusPanel('No active sessions',message:'Start a session from an available station.',icon:Icons.timer_outlined);
         return Column(children:[for(final s in snapshot.data!) Card(child:ListTile(
           title:Text('${s.stationName} · ${s.customerName}'), subtitle:Text('${s.mode.label} · ${s.status} · ${(s.targetMinutes??s.durationMinutes+s.extraMinutes)} min booked'),
           trailing: const Icon(Icons.chevron_right),onTap:()=>_details(context,s)))]);
@@ -217,7 +218,7 @@ class _BookingsPageState extends State<BookingsPage> with LiveShopData {
       TextField(decoration:const InputDecoration(labelText:'Search customer or phone',prefixIcon:Icon(Icons.search)),
         onChanged:(value)=>setState(()=>query=value.trim().toLowerCase())),
       FutureBuilder<List<Booking>>(future:future=refreshOnShopChange(future,widget.repository.bookings),builder:(context,snapshot){
-        if(snapshot.hasError) return const Text('Bookings unavailable. Pull to retry.');
+        if(snapshot.hasError) return const WebsiteStatusPanel('Bookings unavailable',message:'Pull to retry.',icon:Icons.cloud_off_outlined);
         if(!snapshot.hasData) return const Center(child:CircularProgressIndicator());
         final today=dateOnly(DateTime.now());
         final visible=snapshot.data!.where((b){
@@ -232,14 +233,19 @@ class _BookingsPageState extends State<BookingsPage> with LiveShopData {
           ['Date','Start','Customer','Phone','Station','Mode','Duration','Status','Advance','Method','Balance'],
           for(final b in visible)[b.date,b.startTime,b.customerName,b.customerPhone??'',b.stationName,b.mode.value,
             b.durationMinutes,b.status,b.advanceAmount,b.advancePaymentMethod??'',b.balanceAmount??0]];
-        if(visible.isEmpty)return const Text('No bookings match these filters.');
+        if(visible.isEmpty)return const WebsiteStatusPanel('No bookings match these filters',message:'Try another date or status.',icon:Icons.calendar_month_outlined);
         return Column(children:[
           Row(children:[
             TextButton(onPressed:()=>shareCsv(context,'bookings.csv',rows),child:const Text('Export CSV')),
             TextButton(onPressed:()=>sharePdf('bookings.pdf','Bookings',rows),child:const Text('Export PDF')),
           ]),
-          for(final b in visible) Card(child:ListTile(title:Text('${b.customerName} · ${b.stationName}'),
-          subtitle:Text('${b.date} ${b.startTime} · ${b.durationMinutes} min · ${b.status}\nAdvance ${money(b.advanceAmount)}'),
+          for(final b in visible) Card(child:ListTile(
+          leading:Column(mainAxisAlignment:MainAxisAlignment.center,mainAxisSize:MainAxisSize.min,children:[
+            Text(b.startTime,style:const TextStyle(fontSize:12,fontWeight:FontWeight.w600)),
+            Text(b.date==dateOnly(DateTime.now())?'Today':b.date,
+              style:Theme.of(context).textTheme.bodySmall)]),
+          title:Text(b.customerName),
+          subtitle:Text('${b.stationName} · ${b.mode.label} · ${b.durationMinutes} min · ${b.status}\nAdvance ${money(b.advanceAmount)}'),
           isThreeLine:true, trailing:widget.role.canOperate&&b.status=='CONFIRMED'?PopupMenuButton<String>(onSelected:(v) {
             if(v=='edit' && shop!=null) _edit(context,shop,b);
             if(v=='cancel') runAction(context,() async {await widget.repository.cancelBooking(b.id);reload();});
@@ -301,7 +307,7 @@ class _ReportsPageState extends State<ReportsPage> {
     Row(children:[TextButton(onPressed:() async {final range=await showDateRangePicker(context:context,firstDate:DateTime(2020),lastDate:DateTime(2100),initialDateRange:DateTimeRange(start:start,end:end));if(range!=null){start=range.start;end=range.end;reload();}},child:Text('${dateOnly(start)} to ${dateOnly(end)}')),
       const Spacer(),IconButton(onPressed:reload,icon:const Icon(Icons.refresh))]),
     FutureBuilder<ReportData>(future:future,builder:(context,snapshot) {
-      if(snapshot.hasError) return const Text('Reports unavailable. Pull to retry.');
+      if(snapshot.hasError) return const WebsiteStatusPanel('Reports unavailable',message:'Pull to retry.',icon:Icons.cloud_off_outlined);
       if(!snapshot.hasData) return const Center(child:CircularProgressIndicator());
       final data=snapshot.data!;
       final modeTotals=<SessionMode,int>{for(final m in SessionMode.values)m:0};
