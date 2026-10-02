@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:game_terminal_app/app/game_terminal_app.dart';
+import 'package:go_router/go_router.dart';
 import 'package:game_terminal_app/data/models/app_role.dart';
 import 'package:game_terminal_app/data/repositories/auth_repository.dart';
 import 'package:game_terminal_app/features/auth/auth_controller.dart';
@@ -71,9 +72,22 @@ void main() {
       expect(find.text('4 / 6'), findsOneWidget);
       await tester.tap(find.byTooltip('Open menu'));
       await tester.pumpAndSettle();
-      await tester.drag(find.byType(Drawer), const Offset(0, -260));
+      for (final title in [
+        'Dashboard',
+        'Bookings',
+        'Transactions',
+        'Customers',
+        'Expenses',
+        'Daily Report',
+        'Game Terminal',
+      ]) {
+        expect(find.text(title), findsOneWidget);
+      }
+      expect(find.text('Stations'), findsNothing);
+      expect(find.text('Sessions'), findsNothing);
+      Navigator.of(tester.element(find.byType(Drawer))).pop();
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Stations'));
+      GoRouter.of(tester.element(find.text('Consoles free'))).go('/stations');
       await tester.pumpAndSettle();
       expect(find.text('Station 1'), findsOneWidget);
       await tester.tap(find.widgetWithText(ChoiceChip, 'Available'));
@@ -104,6 +118,11 @@ void main() {
       expect(find.text('Business Overview'), findsOneWidget);
       await tester.tap(find.byTooltip('Open menu'));
       await tester.pumpAndSettle();
+      expect(find.text('Overview'), findsOneWidget);
+      expect(find.text('Reports'), findsOneWidget);
+      expect(find.text('Shop Operations'), findsOneWidget);
+      expect(find.text('Sessions'), findsNothing);
+      expect(find.text('Bookings'), findsNothing);
       await tester.tap(find.text('Shop Operations'));
       await tester.pumpAndSettle();
       expect(find.text('Station 1'), findsOneWidget);

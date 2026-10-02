@@ -72,9 +72,6 @@ class _StaffShellState extends State<StaffShell> {
             ('Overview', role.home, Icons.space_dashboard_outlined),
             ('Reports', role.reportsPath, Icons.bar_chart_outlined),
             ('Shop Operations', role.stationsPath, Icons.storefront_outlined),
-            ('Sessions', role.sessionsPath, Icons.timer_outlined),
-            ('Bookings', role.bookingsPath, Icons.calendar_month_outlined),
-            ('Account', role.accountPath, Icons.person_outline),
           ]
         : <(String, String, IconData)>[
             ('Dashboard', role.home, Icons.space_dashboard_outlined),
@@ -96,14 +93,6 @@ class _StaffShellState extends State<StaffShell> {
               role.gameTerminalPath,
               Icons.sports_esports_outlined,
             ),
-            ('Stations', role.stationsPath, Icons.desktop_windows_outlined),
-            ('Sessions', role.sessionsPath, Icons.timer_outlined),
-            (
-              'Station details',
-              role.stationDetailsPath,
-              Icons.display_settings_outlined,
-            ),
-            ('Account', role.accountPath, Icons.person_outline),
           ];
     final hour = now.hour % 12 == 0 ? 12 : now.hour % 12;
     final time =
@@ -116,129 +105,103 @@ class _StaffShellState extends State<StaffShell> {
             child: Column(
               children: [
                 Container(
-                  height: 152,
+                  height: 116,
                   width: double.infinity,
-                  decoration: const BoxDecoration(
-                    image: DecorationImage(
-                      image: AssetImage('assets/brand/spidey.webp'),
-                      fit: BoxFit.cover,
-                      alignment: Alignment.topCenter,
-                      opacity: .32,
-                    ),
-                  ),
-                  child: Container(
-                    decoration: const BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [Color(0x990A0E1A), AppTheme.surface],
-                      ),
-                    ),
-                    padding: const EdgeInsets.fromLTRB(20, 28, 20, 16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Image.asset(
-                          'assets/brand/logo.webp',
-                          width: 68,
-                          height: 68,
-                        ),
-                        const SizedBox(height: 8),
-                        const Text(
-                          'GAME TERMINAL',
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: 1.4,
-                            color: AppTheme.text,
-                          ),
-                        ),
-                      ],
-                    ),
+                  alignment: Alignment.center,
+                  child: Image.asset(
+                    'assets/brand/logo.webp',
+                    width: 88,
+                    height: 88,
                   ),
                 ),
-                const Divider(),
+                const Divider(height: 1),
                 Expanded(
-                  child: ListView(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 8,
-                    ),
+                  child: Stack(
                     children: [
-                      for (final item in items)
-                        Padding(
-                          padding: const EdgeInsets.only(bottom: 3),
-                          child: ListTile(
-                            dense: true,
-                            minTileHeight: 40,
-                            visualDensity: VisualDensity.compact,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(9),
-                            ),
-                            tileColor: widget.path == item.$2
-                                ? AppTheme.accent.withValues(alpha: .18)
-                                : null,
-                            leading: Icon(
-                              item.$3,
-                              size: 18,
-                              color: widget.path == item.$2
-                                  ? AppTheme.accent
-                                  : AppTheme.textMuted,
-                            ),
-                            title: Text(
-                              item.$1,
-                              style: TextStyle(
-                                fontSize: 13,
-                                fontWeight: widget.path == item.$2
-                                    ? FontWeight.w700
-                                    : FontWeight.w500,
-                                color: widget.path == item.$2
-                                    ? AppTheme.text
-                                    : AppTheme.textSecondary,
-                              ),
-                            ),
-                            onTap: () {
-                              Navigator.pop(context);
-                              context.go(item.$2);
-                            },
+                      Positioned.fill(
+                        child: Opacity(
+                          opacity: .9,
+                          child: Image.asset(
+                            'assets/brand/spidey.webp',
+                            fit: BoxFit.cover,
+                            alignment: Alignment.bottomLeft,
                           ),
                         ),
-                    ],
-                  ),
-                ),
-                const Divider(),
-                Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Row(
-                    children: [
-                      const Icon(
-                        Icons.account_circle_outlined,
-                        size: 26,
-                        color: AppTheme.textSecondary,
                       ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              role.label,
-                              style: const TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w700,
-                              ),
+                      Positioned.fill(
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
+                              colors: [
+                                AppTheme.surface,
+                                AppTheme.surface,
+                                AppTheme.surface.withValues(alpha: .55),
+                                AppTheme.background.withValues(alpha: .15),
+                              ],
+                              stops: const [0, .3, .7, 1],
                             ),
-                            Text(
-                              widget.auth.user?.email ?? '',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                fontSize: 11,
-                                color: AppTheme.textMuted,
-                              ),
-                            ),
-                          ],
+                          ),
                         ),
+                      ),
+                      ListView(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 16,
+                        ),
+                        children: [
+                          const Padding(
+                            padding: EdgeInsets.fromLTRB(12, 0, 12, 10),
+                            child: Text(
+                              'MENU',
+                              style: TextStyle(
+                                color: AppTheme.textMuted,
+                                fontSize: 10,
+                                fontWeight: FontWeight.w700,
+                                letterSpacing: 1.4,
+                              ),
+                            ),
+                          ),
+                          for (final item in items)
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 3),
+                              child: ListTile(
+                                dense: true,
+                                minTileHeight: 40,
+                                visualDensity: VisualDensity.compact,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(9),
+                                ),
+                                tileColor: widget.path == item.$2
+                                    ? AppTheme.accent.withValues(alpha: .18)
+                                    : null,
+                                leading: Icon(
+                                  item.$3,
+                                  size: 18,
+                                  color: widget.path == item.$2
+                                      ? AppTheme.accent
+                                      : AppTheme.textMuted,
+                                ),
+                                title: Text(
+                                  item.$1,
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: widget.path == item.$2
+                                        ? FontWeight.w700
+                                        : FontWeight.w500,
+                                    color: widget.path == item.$2
+                                        ? AppTheme.text
+                                        : AppTheme.textSecondary,
+                                  ),
+                                ),
+                                onTap: () {
+                                  Navigator.pop(context);
+                                  context.go(item.$2);
+                                },
+                              ),
+                            ),
+                        ],
                       ),
                     ],
                   ),
@@ -288,7 +251,19 @@ class _StaffShellState extends State<StaffShell> {
             const SizedBox(width: 8),
           ],
         ),
-        body: SafeArea(child: widget.child),
+        body: Stack(
+          children: [
+            if (widget.path != '/dashboard')
+              Positioned.fill(
+                child: Image.asset(
+                  'assets/brand/background.webp',
+                  fit: BoxFit.cover,
+                  alignment: Alignment.center,
+                ),
+              ),
+            SafeArea(child: widget.child),
+          ],
+        ),
       ),
     );
   }

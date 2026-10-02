@@ -126,4 +126,28 @@ void main() {
     expect(snapshot.controllersFree, 6);
     expect(session.isDue(DateTime.utc(2027)), isFalse);
   });
+  test('physical consoles show PS5 #1 before #2 and #3', () {
+    final snapshot = ShopSnapshot(
+      stations: const [
+        Station(
+          id: 'ps5-03', name: 'PS5 #3', type: 'PS5_MULTI',
+          status: StationStatus.available, order: 1,
+        ),
+        Station(
+          id: 'ps5-02', name: 'PS5 #2', type: 'PS5',
+          status: StationStatus.available, order: 3,
+        ),
+        Station(
+          id: 'ps5-01', name: 'PS5 #1', type: 'PS5',
+          status: StationStatus.available, order: 2,
+        ),
+      ],
+      sessions: [],
+      cafeName: 'Shop',
+      totalControllers: 6,
+    );
+    expect(snapshot.stations.map((station) => station.name), [
+      'PS5 #1', 'PS5 #2', 'PS5 #3',
+    ]);
+  });
 }

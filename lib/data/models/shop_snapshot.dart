@@ -93,7 +93,19 @@ class ShopSnapshot {
     required List<ActiveSession> sessions,
     required this.cafeName,
     required this.totalControllers,
-  }) : stations = List.unmodifiable(stations),
+  }) : stations = List.unmodifiable(
+         [...stations]..sort((a, b) {
+           // The physical consoles have stable IDs even when staff rename them.
+           // Keep PS5 #1, #2, #3 in that order on every screen.
+           final aNumber = int.tryParse(a.id.split('-').last);
+           final bNumber = int.tryParse(b.id.split('-').last);
+           if (aNumber != null && bNumber != null) {
+             final byNumber = aNumber.compareTo(bNumber);
+             if (byNumber != 0) return byNumber;
+           }
+           return a.order.compareTo(b.order);
+         }),
+       ),
        sessions = List.unmodifiable(sessions.where((s) => s.isActive));
   final List<Station> stations;
   final List<ActiveSession> sessions;
