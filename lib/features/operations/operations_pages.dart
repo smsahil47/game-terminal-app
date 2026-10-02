@@ -9,6 +9,7 @@ import '../../core/theme/website_widgets.dart';
 import '../../data/models/app_role.dart';
 import '../../data/models/operations.dart';
 import '../../data/models/shop_snapshot.dart';
+import '../../data/models/website_models.dart';
 import '../../data/repositories/operations_repository.dart';
 import '../../data/repositories/website_repository.dart';
 import '../../services/document_export.dart';
@@ -24,19 +25,41 @@ Future<void> runAction(BuildContext context, Future<void> Function() action) asy
 Widget field(TextEditingController controller, String label, {TextInputType? keyboard}) => Padding(
   padding: const EdgeInsets.only(bottom: 12), child: TextField(controller:controller,keyboardType:keyboard,decoration:InputDecoration(labelText:label,border:const OutlineInputBorder())));
 int parsed(TextEditingController controller) => int.tryParse(controller.text.trim()) ?? 0;
+bool bookingDateInRange(String date, String range, DateTime now) {
+  final today = DateTime(now.year, now.month, now.day);
+  return switch (range) {
+    'today' => date == dateOnly(today),
+    'yesterday' => date == dateOnly(today.subtract(const Duration(days: 1))),
+    'week' => date.compareTo(dateOnly(today.subtract(const Duration(days: 7)))) >= 0,
+    'month' => date.compareTo(dateOnly(today.subtract(const Duration(days: 30)))) >= 0,
+    _ => true,
+  };
+}
 
 class SessionsPage extends StatefulWidget {
-  const SessionsPage({super.key,required this.repository,required this.website,required this.role});
+  const SessionsPage({super.key,required this.repository,required this.website,required this.role,
+    this.initialStationId,this.initialMode,this.checkoutStationId});
   final OperationsRepository repository;
   final WebsiteRepository website;
   final AppRole role;
+  final String? initialStationId,initialMode,checkoutStationId;
   @override State<SessionsPage> createState()=>_SessionsPageState();
 }
 class _SessionsPageState extends State<SessionsPage> with LiveShopData {
   late Future<List<SessionDetail>> future = widget.repository.sessions();
+  bool openedStationAction=false;
   void reload() { setState(()=> future=widget.repository.sessions()); ShopScope.of(context).refresh(); }
   @override Widget build(BuildContext context) {
     final shop=ShopScope.of(context).snapshot;
+    if(!openedStationAction && widget.role.canOperate && shop!=null && widget.initialStationId!=null){
+      openedStationAction=true;
+      WidgetsBinding.instance.addPostFrameCallback((_){
+        if(mounted) {
+          _start(context,shop,stationId:widget.initialStationId,
+            selectedMode:widget.initialMode);
+        }
+      });
+    }
     return RefreshIndicator(onRefresh:() async => reload(),child:ListView(padding:const EdgeInsets.all(16),children:[
       Row(children:[Expanded(child:Text('Sessions',style:Theme.of(context).textTheme.headlineSmall)),
         if(widget.role.canOperate && shop!=null) FilledButton.icon(onPressed:()=>_start(context,shop),icon:const Icon(Icons.add),label:const Text('Start'))]),
@@ -44,6 +67,15 @@ class _SessionsPageState extends State<SessionsPage> with LiveShopData {
       FutureBuilder<List<SessionDetail>>(future:future=refreshOnShopChange(future,widget.repository.sessions),builder:(context,snapshot){
         if(snapshot.hasError) return const WebsiteStatusPanel('Sessions unavailable',message:'Pull to retry.',icon:Icons.cloud_off_outlined);
         if(!snapshot.hasData) return const Center(child:CircularProgressIndicator());
+        if(!openedStationAction && widget.role.canOperate && widget.checkoutStationId!=null){
+          final target=snapshot.data!.where((session)=>session.stationId==widget.checkoutStationId).firstOrNull;
+          openedStationAction=true;
+          if(target!=null) {
+            WidgetsBinding.instance.addPostFrameCallback((_){
+              if(mounted) { _checkout(context,target); }
+            });
+          }
+        }
         if(snapshot.data!.isEmpty) return const WebsiteStatusPanel('No active sessions',message:'Start a session from an available station.',icon:Icons.timer_outlined);
         return Column(children:[for(final s in snapshot.data!) Card(child:ListTile(
           title:Text('${s.stationName} · ${s.customerName}'), subtitle:Text('${s.mode.label} · ${s.status} · ${(s.targetMinutes??s.durationMinutes+s.extraMinutes)} min booked'),
@@ -51,15 +83,21 @@ class _SessionsPageState extends State<SessionsPage> with LiveShopData {
       })
     ]));
   }
-  Future<void> _start(BuildContext context,ShopSnapshot shop) async {
-    final name=TextEditingController(), phone=TextEditingController(), minutes=TextEditingController(text:'60'), game=TextEditingController();
+  Future<void> _start(BuildContext context,ShopSnapshot shop,{String? stationId,String? selectedMode}) async {
+    final name=TextEditingController(), phone=TextEditingController(), game=TextEditingController(), notes=TextEditingController();
     final snackName=TextEditingController(),snackPrice=TextEditingController();
     final snacks=<Snack>[];
-    Station? station=shop.stations.where((s)=>s.status==StationStatus.available).firstOrNull;
-    SessionMode mode=SessionMode.gaming; int players=1; List<String> games=[];
+    Station? station=shop.stations.where((s)=>s.status==StationStatus.available &&
+      (stationId==null||s.id==stationId)).firstOrNull;
+    if(station==null){notice(context,'The selected station is not available.');return;}
+    SessionMode mode=station.type=='PS5_MULTI'
+      ? SessionMode.values.where((m)=>m.value==selectedMode).firstOrNull??SessionMode.gaming
+      : SessionMode.gaming;
+    int players=1; int? reminderMinutes; List<String> games=[];
     try { games=await widget.repository.games(); } catch (_) {}
     final config=await widget.website.configuration();
     if(!context.mounted) return;
+    final catalog=games.isEmpty?defaultGames:games;
     await showDialog<void>(context:context,builder:(dialog)=>StatefulBuilder(builder:(context,setDialog) => AlertDialog(
       title:const Text('Start session'),content:SizedBox(width:420,child:SingleChildScrollView(child:Column(mainAxisSize:MainAxisSize.min,children:[
         DropdownButtonFormField<Station>(initialValue:station,decoration:const InputDecoration(labelText:'Station'),items:[
@@ -69,26 +107,36 @@ class _SessionsPageState extends State<SessionsPage> with LiveShopData {
         DropdownButtonFormField<SessionMode>(key:ValueKey('${station?.id}:${mode.value}'),initialValue:mode,
           decoration:const InputDecoration(labelText:'Mode'),items:[
           for(final m in station?.type=='PS5_MULTI'?SessionMode.values:[SessionMode.gaming]) DropdownMenuItem(value:m,child:Text(m.label))
-        ],onChanged:(v)=>setDialog(()=>mode=v!)),
+        ],onChanged:(v)=>setDialog((){
+          mode=v!;
+          if(!gamesForSessionMode(mode.value,catalog).contains(game.text))game.clear();
+        })),
         if(mode==SessionMode.gaming) DropdownButtonFormField<int>(initialValue:players,decoration:const InputDecoration(labelText:'Players/controllers'),items:[
           for(var n=1;n<=4;n++) DropdownMenuItem(value:n,child:Text('$n'))
         ],onChanged:(v)=>setDialog(()=>players=v!)),
-        if(games.isNotEmpty) DropdownButtonFormField<String>(decoration:const InputDecoration(labelText:'Game'),items:[
-          for(final g in games) DropdownMenuItem(value:g,child:Text(g))
+        DropdownButtonFormField<String>(key:ValueKey('game-${mode.value}'),decoration:const InputDecoration(labelText:'Game'),items:[
+          for(final g in gamesForSessionMode(mode.value,catalog)) DropdownMenuItem(value:g,child:Text(g))
         ],onChanged:(v)=>game.text=v??''),
-        field(game,'Game title'),field(minutes,'Duration minutes',keyboard:TextInputType.number),
-        for(final snack in snacks)ListTile(title:Text(snack.name),trailing:Text(money(snack.price))),
+        field(game,'Game title'),
+        const Text('Session Duration · reminder only'),
+        Wrap(spacing:8,children:[for(final choice in [30,60,120])
+          ChoiceChip(label:Text(choice==60?'1 Hour':choice==120?'2 Hours':'30 Minutes'),
+            selected:reminderMinutes==choice,
+            onSelected:(_)=>setDialog(()=>reminderMinutes=choice))]),
+        for(final snack in snacks)ListTile(title:Text(snack.name),subtitle:Text(money(snack.price)),
+          trailing:IconButton(tooltip:'Remove snack',icon:const Icon(Icons.close),
+            onPressed:()=>setDialog(()=>snacks.remove(snack)))),
         field(snackName,'Snack (optional)'),field(snackPrice,'Snack price',keyboard:TextInputType.number),
         TextButton(onPressed:(){if(snackName.text.trim().isEmpty||parsed(snackPrice)<=0)return;
           setDialog((){snacks.add(Snack(snackName.text.trim(),parsed(snackPrice)));snackName.clear();snackPrice.clear();});
         },child:const Text('Add snack')),
-        Text('Menu charge: ${money(menuPlayAmount(mode,parsed(minutes),players,config.fallbackRate(mode.value,players),rates:config.menuRates))} · confirm duration before starting'),
+        field(notes,'Notes (optional)'),
+        const Text('Billing follows actual elapsed time.'),
       ]))),actions:[TextButton(onPressed:()=>Navigator.pop(dialog),child:const Text('Cancel')),
-        FilledButton(onPressed:() async { final selected=station; final duration=parsed(minutes);
-          if(selected==null || name.text.trim().isEmpty || duration<=0){notice(dialog,'Enter a station, customer and valid duration.');return;}
+        FilledButton(onPressed:() async { final selected=station; final duration=reminderMinutes;
+          if(selected==null || name.text.trim().isEmpty || duration==null){notice(dialog,'Choose a station, customer and session duration.');return;}
           if(selected.type!='PS5_MULTI' && mode!=SessionMode.gaming){notice(dialog,'This station supports Gaming only.');return;}
-          final charge=menuPlayAmount(mode,duration,players,config.fallbackRate(mode.value,players),rates:config.menuRates);
-          await runAction(dialog,() async { await widget.repository.start(SessionDraft(station:selected,customerName:name.text,phone:phone.text,mode:mode,minutes:duration,players:players,game:game.text,playAmount:charge,ratePerHour:config.fallbackRate(mode.value,players),snacks:snacks),shop.controllersFree);
+          await runAction(dialog,() async { await widget.repository.start(SessionDraft(station:selected,customerName:name.text,phone:phone.text,mode:mode,minutes:duration,players:players,game:game.text,notes:notes.text,playAmount:0,ratePerHour:config.fallbackRate(mode.value,players),snacks:snacks),shop.controllersFree);
             if(dialog.mounted){Navigator.pop(dialog);reload();} });
         },child:const Text('Start'))]
     )));
@@ -189,6 +237,7 @@ class BookingsPage extends StatefulWidget {
 class _BookingsPageState extends State<BookingsPage> with LiveShopData {
   String scope='today';
   String query='';
+  String dateRange='all';
   String? modeFilter,stationFilter;
   DateTime? exactDate;
   late Future<List<Booking>> future=widget.repository.bookings();
@@ -202,6 +251,13 @@ class _BookingsPageState extends State<BookingsPage> with LiveShopData {
       Wrap(spacing:8,children:[
         for(final value in ['today','upcoming','all']) ChoiceChip(label:Text(value),selected:scope==value,
           onSelected:(_)=>setState(()=>scope=value)),
+        DropdownButton<String>(value:dateRange,items:const [
+          DropdownMenuItem(value:'all',child:Text('All dates')),
+          DropdownMenuItem(value:'today',child:Text('Today')),
+          DropdownMenuItem(value:'yesterday',child:Text('Yesterday')),
+          DropdownMenuItem(value:'week',child:Text('Last 7 days')),
+          DropdownMenuItem(value:'month',child:Text('Last 30 days')),
+        ],onChanged:(value)=>setState(()=>dateRange=value??'all')),
         DropdownButton<String?>(value:modeFilter,hint:const Text('All modes'),items:[
           const DropdownMenuItem(value:null,child:Text('All modes')),
           for(final m in SessionMode.values)DropdownMenuItem(value:m.value,child:Text(m.label))],
@@ -215,20 +271,21 @@ class _BookingsPageState extends State<BookingsPage> with LiveShopData {
           child:Text(exactDate==null?'Any date':dateOnly(exactDate!))),
         if(exactDate!=null)IconButton(onPressed:()=>setState(()=>exactDate=null),icon:const Icon(Icons.clear)),
       ]),
-      TextField(decoration:const InputDecoration(labelText:'Search customer or phone',prefixIcon:Icon(Icons.search)),
+      TextField(decoration:const InputDecoration(labelText:'Search customer or station',prefixIcon:Icon(Icons.search)),
         onChanged:(value)=>setState(()=>query=value.trim().toLowerCase())),
       FutureBuilder<List<Booking>>(future:future=refreshOnShopChange(future,widget.repository.bookings),builder:(context,snapshot){
         if(snapshot.hasError) return const WebsiteStatusPanel('Bookings unavailable',message:'Pull to retry.',icon:Icons.cloud_off_outlined);
         if(!snapshot.hasData) return const Center(child:CircularProgressIndicator());
         final today=dateOnly(DateTime.now());
         final visible=snapshot.data!.where((b){
-          if(scope=='today'&&b.date!=today)return false;
+          if(scope=='today'&&(b.date!=today||b.status=='CANCELLED'))return false;
           if(scope=='upcoming'&&(b.date.compareTo(today)<0||b.status!='CONFIRMED'))return false;
           if(exactDate!=null&&b.date!=dateOnly(exactDate!))return false;
+          if(exactDate==null&&!bookingDateInRange(b.date,dateRange,DateTime.now()))return false;
           if(modeFilter!=null&&b.mode.value!=modeFilter)return false;
           if(stationFilter!=null&&b.stationId!=stationFilter)return false;
-          return b.customerName.toLowerCase().contains(query)||(b.customerPhone??'').contains(query);
-        }).toList();
+          return b.customerName.toLowerCase().contains(query)||b.stationName.toLowerCase().contains(query);
+        }).toList()..sort((a,b)=>(a.date+a.startTime).compareTo(b.date+b.startTime));
         final rows=<List<Object?>>[
           ['Date','Start','Customer','Phone','Station','Mode','Duration','Status','Advance','Method','Balance'],
           for(final b in visible)[b.date,b.startTime,b.customerName,b.customerPhone??'',b.stationName,b.mode.value,
@@ -248,7 +305,7 @@ class _BookingsPageState extends State<BookingsPage> with LiveShopData {
           subtitle:Text('${b.stationName} · ${b.mode.label} · ${b.durationMinutes} min · ${b.status}\nAdvance ${money(b.advanceAmount)}'),
           isThreeLine:true, trailing:widget.role.canOperate&&b.status=='CONFIRMED'?PopupMenuButton<String>(onSelected:(v) {
             if(v=='edit' && shop!=null) _edit(context,shop,b);
-            if(v=='cancel') runAction(context,() async {await widget.repository.cancelBooking(b.id);reload();});
+            if(v=='cancel') _cancel(b);
             if(v=='start' && shop!=null){runAction(context,()async{
               final started=await startBookedSession(context,b,shop,widget.repository,widget.website);
               if(started&&context.mounted){reload();ShopScope.of(context).refresh();}
@@ -260,7 +317,22 @@ class _BookingsPageState extends State<BookingsPage> with LiveShopData {
       })
     ]));
   }
+  Future<void> _cancel(Booking booking) async {
+    final confirmed=await showDialog<bool>(context:context,builder:(dialog)=>AlertDialog(
+      title:const Text('Cancel Booking?'),
+      content:Text('Cancel ${booking.customerName}\'s booking on ${booking.stationName} at ${booking.startTime}? This cannot be undone.'),
+      actions:[
+        TextButton(onPressed:()=>Navigator.pop(dialog,false),child:const Text('Keep Booking')),
+        FilledButton(onPressed:()=>Navigator.pop(dialog,true),child:const Text('Cancel Booking')),
+      ]));
+    if(confirmed!=true||!mounted)return;
+    await runAction(context,() async {await widget.repository.cancelBooking(booking.id);reload();});
+  }
   Future<void> _edit(BuildContext context,ShopSnapshot shop,Booking? old) async {
+    late final ShopConfiguration config;
+    try { config=await widget.website.configuration(); }
+    catch (error) { if(context.mounted)notice(context,error); return; }
+    if(!context.mounted)return;
     final name=TextEditingController(text:old?.customerName),phone=TextEditingController(text:old?.customerPhone),
       duration=TextEditingController(text:'${old?.durationMinutes??60}'),advance=TextEditingController(text:'${old?.advanceAmount??0}');
     Station? station=shop.stations.where((s)=>s.id==old?.stationId).firstOrNull??shop.stations.firstOrNull;
@@ -282,6 +354,19 @@ class _BookingsPageState extends State<BookingsPage> with LiveShopData {
         field(duration,'Duration minutes',keyboard:TextInputType.number),field(advance,'Advance',keyboard:TextInputType.number),
         DropdownButtonFormField<String>(initialValue:method,decoration:const InputDecoration(labelText:'Advance method'),items:const [
           DropdownMenuItem(value:'CASH',child:Text('Cash')),DropdownMenuItem(value:'UPI',child:Text('UPI'))],onChanged:(v)=>setDialog(()=>method=v!)),
+        AnimatedBuilder(animation:Listenable.merge([duration,advance]),builder:(context,_) {
+          final minutes=parsed(duration);
+          final estimate=menuPlayAmount(mode,minutes,1,config.fallbackRate(mode.value,1),rates:config.menuRates);
+          final end=time.hour*60+time.minute+minutes;
+          final slotStart='${time.hour.toString().padLeft(2,'0')}:${time.minute.toString().padLeft(2,'0')}';
+          final slotEnd=minutes>0&&end<=1440
+            ? '${(end~/60).toString().padLeft(2,'0')}:${(end%60).toString().padLeft(2,'0')}'
+            : 'Check duration';
+          return Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
+            Text('Slot $slotStart – $slotEnd'),
+            Text('Est. total ${money(estimate)} · Balance due ${money((estimate-parsed(advance)).clamp(0,estimate))}'),
+          ]);
+        }),
       ]))),actions:[TextButton(onPressed:()=>Navigator.pop(dialog),child:const Text('Cancel')),
         FilledButton(onPressed:() async {final selected=station; if(selected==null){notice(dialog,'Choose a station.');return;}
           if(selected.type!='PS5_MULTI' && mode!=SessionMode.gaming){notice(dialog,'This station supports Gaming only.');return;}

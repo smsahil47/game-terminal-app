@@ -32,6 +32,24 @@ const defaultMenuRates = <String,int>{
   'ps5_1h_2p':250,'ps5_1h_3p':350,'ps5_1h_4p':450,
   'vr_15m_1p':100,'vr_30m_1p':200,
 };
+const defaultGames = <String>[
+  'GTA 5', 'Gran Turismo 7', 'God of War', 'Spider-Man 2',
+  'Call of Duty', 'Tekken 8', 'Resident Evil 4', 'Forza Horizon 5',
+  'F1', 'FC 26', 'Cricket 24', 'WWE 26', 'MotoFest',
+];
+List<String> gamesForSessionMode(String mode, List<String> catalog) {
+  const byMode = <String, List<String>>{
+    'VR': ['Resident Evil 4', 'Gran Turismo 7'],
+    'RACING': ['Forza Horizon 5', 'Gran Turismo 7', 'F1', 'MotoFest'],
+    'RACING_VR': [
+      'Resident Evil 4', 'Gran Turismo 7', 'Forza Horizon 5', 'F1', 'MotoFest',
+    ],
+  };
+  final scoped = byMode[mode];
+  if (scoped == null) return List.of(catalog);
+  final installed = scoped.where(catalog.contains).toList();
+  return installed.isEmpty ? List.of(scoped) : installed;
+}
 class ShopConfiguration {
   ShopConfiguration({required this.cafeName, required this.totalControllers,
     required this.gamingRate, required this.vrRate, required this.racingRate,

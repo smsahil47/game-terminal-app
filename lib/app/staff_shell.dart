@@ -10,6 +10,7 @@ import '../data/repositories/operations_repository.dart';
 import '../data/repositories/website_repository.dart';
 import '../features/auth/auth_controller.dart';
 import '../features/shop/shop_controller.dart';
+import '../services/session_alarm.dart';
 
 class ShopScope extends InheritedNotifier<ShopController> {
   const ShopScope({
@@ -44,18 +45,80 @@ class StaffShell extends StatefulWidget {
 class _StaffShellState extends State<StaffShell> {
   late final controller = ShopController(widget.repository);
   Timer? clock;
+  Timer? alertClock;
   DateTime now = DateTime.now();
+  final alertedSessions = <String>{};
+  final openAlerts = <String>{};
+  bool alarmPlaying = false;
   @override
   void initState() {
     super.initState();
     clock = Timer.periodic(const Duration(minutes: 1), (_) {
       if (mounted) setState(() => now = DateTime.now());
     });
+    controller.addListener(_checkDurationAlerts);
+    alertClock = Timer.periodic(const Duration(seconds: 1), (_) => _checkDurationAlerts());
+  }
+
+  void _checkDurationAlerts() {
+    if (!mounted || widget.auth.role != AppRole.receptionist) return;
+    final snapshot = controller.snapshot;
+    if (snapshot == null) return;
+    final checkedAt = DateTime.now();
+    for (final session in snapshot.sessions) {
+      if (!session.isDue(checkedAt)) continue;
+      final key = '${session.id}:${session.targetMinutes}';
+      if (!alertedSessions.add(key)) continue;
+      openAlerts.add(key);
+      final station = snapshot.stations
+          .where((item) => item.id == session.stationId)
+          .firstOrNull;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || !openAlerts.contains(key)) return;
+        final target = session.targetMinutes!;
+        final label = target == 60
+            ? '1 Hour'
+            : target % 60 == 0
+                ? '${target ~/ 60} Hours'
+                : '$target Minutes';
+        ScaffoldMessenger.of(context).showMaterialBanner(
+          MaterialBanner(
+            leading: const Icon(Icons.alarm, color: AppTheme.warning),
+            content: Text(
+              '${station?.name ?? 'Station'} has reached $label\n'
+              '${session.customerName} · started ${TimeOfDay.fromDateTime(session.startedAt.toLocal()).format(context)}',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => _dismissDurationAlert(key),
+                child: const Text('Dismiss'),
+              ),
+            ],
+          ),
+        );
+        if (!alarmPlaying) {
+          alarmPlaying = true;
+          unawaited(SessionAlarm.start());
+        }
+      });
+    }
+  }
+
+  void _dismissDurationAlert(String key) {
+    openAlerts.remove(key);
+    ScaffoldMessenger.of(context).hideCurrentMaterialBanner();
+    if (openAlerts.isEmpty) {
+      alarmPlaying = false;
+      unawaited(SessionAlarm.stop());
+    }
   }
 
   @override
   void dispose() {
     clock?.cancel();
+    alertClock?.cancel();
+    controller.removeListener(_checkDurationAlerts);
+    unawaited(SessionAlarm.stop());
     controller.dispose();
     super.dispose();
   }

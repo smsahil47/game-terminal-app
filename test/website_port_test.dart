@@ -16,6 +16,13 @@ void main() {
     expect(menuPlayAmount(SessionMode.gaming,60,2,config.fallbackRate('GAMING',2),rates:rates),280);
     expect(menuPlayAmount(SessionMode.vr,45,1,config.fallbackRate('VR',1),rates:rates),345);
   });
+  test('game choices follow the website mode catalog', () {
+    final catalog = ['GTA 5', 'Gran Turismo 7', 'F1'];
+    expect(gamesForSessionMode('GAMING', catalog), catalog);
+    expect(gamesForSessionMode('VR', catalog), ['Gran Turismo 7']);
+    expect(gamesForSessionMode('RACING', catalog), ['Gran Turismo 7', 'F1']);
+    expect(gamesForSessionMode('VR', []), ['Resident Evil 4', 'Gran Turismo 7']);
+  });
   test('website staff validation accepts Indian names and checks mobile numbers',() {
     expect(customerNameError('A'),isNotNull);
     expect(customerNameError('1234'),isNotNull);

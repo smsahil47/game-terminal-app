@@ -3,10 +3,11 @@ import '../models/shop_snapshot.dart';
 import '../../core/billing/billing.dart';
 
 class SessionDraft {
-  const SessionDraft({required this.station, required this.customerName, required this.mode, required this.minutes, required this.players, required this.game, required this.playAmount, required this.ratePerHour, this.phone, this.snacks=const []});
+  const SessionDraft({required this.station, required this.customerName, required this.mode, required this.minutes, required this.players, required this.game, required this.playAmount, required this.ratePerHour, this.phone, this.notes, this.snacks=const []});
   final Station station;
   final String customerName, game;
   final String? phone;
+  final String? notes;
   final List<Snack> snacks;
   final SessionMode mode;
   final int minutes, players, playAmount, ratePerHour;

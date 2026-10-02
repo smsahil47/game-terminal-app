@@ -6,7 +6,7 @@ import '../../data/models/website_models.dart';
 import '../../data/repositories/website_repository.dart';
 import '../../services/document_export.dart';
 import '../../services/live_shop_data.dart';
-import '../operations/operations_pages.dart' show dateOnly, money, notice, runAction, field, parsed;
+import '../operations/operations_pages.dart' show dateOnly, money, notice, runAction, field, parsed, bookingDateInRange;
 
 class GameTerminalPage extends StatefulWidget {
   const GameTerminalPage({super.key,required this.repository});
@@ -46,6 +46,9 @@ class _GameTerminalPageState extends State<GameTerminalPage> with LiveShopData {
         const SizedBox(height:12),
         if(selectedTab==0)...[
         const WebsiteSectionTitle('Games'),
+        Align(alignment:Alignment.centerRight,child:TextButton.icon(
+          onPressed:()=>_resetGames(config),icon:const Icon(Icons.restart_alt),
+          label:const Text('Reset Defaults'))),
         TextField(decoration:const InputDecoration(labelText:'Search catalog',prefixIcon:Icon(Icons.search)),
           onChanged:(value)=>setState(()=>gameQuery=value.trim().toLowerCase())),
         const SizedBox(height:12),
@@ -70,6 +73,9 @@ class _GameTerminalPageState extends State<GameTerminalPage> with LiveShopData {
         if(selectedTab==1)...[
         const SizedBox(height:24),
         const WebsiteSectionTitle('Pricing'),
+        Align(alignment:Alignment.centerRight,child:TextButton.icon(
+          onPressed:_resetRates,icon:const Icon(Icons.restart_alt),
+          label:const Text('Reset Defaults'))),
         WebsiteRows(children:[for(final entry in menuRateLabels.entries) ListTile(title:Text(entry.value),trailing:Text(money(config.menuRates[entry.key]??0)))]),
         const SizedBox(height:12),
         FilledButton.icon(onPressed:()=>_editRates(config),icon:const Icon(Icons.edit),label:const Text('Edit rates')),
@@ -91,9 +97,38 @@ class _GameTerminalPageState extends State<GameTerminalPage> with LiveShopData {
     final title=TextEditingController();
     await showDialog<void>(context:context,builder:(dialog)=>AlertDialog(title:const Text('Add game'),
       content:field(title,'Game title'),actions:[TextButton(onPressed:()=>Navigator.pop(dialog),child:const Text('Cancel')),
-      FilledButton(onPressed:()async{if(title.text.trim().isEmpty)return;
-        await runAction(dialog,()async{await widget.repository.syncGames([...config.games,title.text.trim()],config.games);
+      FilledButton(onPressed:()async{final next=title.text.trim();if(next.isEmpty){notice(dialog,'Please enter a game name.');return;}
+        if(config.games.any((game)=>game.toLowerCase()==next.toLowerCase())){notice(dialog,'This game is already in the catalog.');return;}
+        await runAction(dialog,()async{await widget.repository.syncGames([...config.games,next],config.games);
           if(dialog.mounted){Navigator.pop(dialog);reload();}});},child:const Text('Add'))]));
+  }
+  Future<bool> _confirmReset(String title,String message) async =>
+    await showDialog<bool>(context:context,builder:(dialog)=>AlertDialog(
+      title:Text(title),content:Text(message),actions:[
+        TextButton(onPressed:()=>Navigator.pop(dialog,false),child:const Text('Cancel')),
+        FilledButton(onPressed:()=>Navigator.pop(dialog,true),child:const Text('Reset')),
+      ]))??false;
+  Future<void> _resetGames(ShopConfiguration config) async {
+    if(!await _confirmReset('Reset Games Catalog?',
+      'This replaces the current catalog with the 13 default titles. Added games will be removed.')) { return; }
+    if(!mounted)return;
+    await runAction(context,()async{
+      await widget.repository.syncGames(defaultGames,config.games);
+      reload();
+    });
+  }
+  Future<void> _resetRates() async {
+    if(!await _confirmReset('Reset All Rates?',
+      'This restores every pricing tier to the website menu rates and overwrites current prices.')) { return; }
+    if(!mounted)return;
+    await runAction(context,()async{
+      await widget.repository.saveMenuRates(defaultMenuRates);
+      await widget.repository.saveCoreSettings(
+        gamingRate:defaultMenuRates['ps5_1h_1p'],
+        vrRate:defaultMenuRates['vr_30m_1p']!*2,
+        racingRate:defaultMenuRates['racing_1h_1p']);
+      reload();
+    });
   }
   Future<void> _editRates(ShopConfiguration config) async {
     final inputs={for(final key in menuRateLabels.keys)key:TextEditingController(text:'${config.menuRates[key]??0}')};
@@ -101,8 +136,12 @@ class _GameTerminalPageState extends State<GameTerminalPage> with LiveShopData {
       content:SizedBox(width:420,height:400,child:ListView(children:[for(final entry in menuRateLabels.entries)
         field(inputs[entry.key]!,entry.value,keyboard:TextInputType.number)])),
       actions:[TextButton(onPressed:()=>Navigator.pop(dialog),child:const Text('Cancel')),
-        FilledButton(onPressed:()async{if(inputs.values.any((v)=>int.tryParse(v.text)==null||parsed(v)<0)){notice(dialog,'Enter valid nonnegative rates.');return;}
-          await runAction(dialog,()async{await widget.repository.saveMenuRates({for(final entry in inputs.entries)entry.key:parsed(entry.value)});
+        FilledButton(onPressed:()async{if(inputs.values.any((v)=>int.tryParse(v.text)==null||parsed(v)<=0)){notice(dialog,'Enter valid positive rates.');return;}
+          final rates={for(final entry in inputs.entries)entry.key:parsed(entry.value)};
+          await runAction(dialog,()async{await widget.repository.saveMenuRates(rates);
+            await widget.repository.saveCoreSettings(
+              gamingRate:rates['ps5_1h_1p'],vrRate:rates['vr_30m_1p']!*2,
+              racingRate:rates['racing_1h_1p']);
             if(dialog.mounted){Navigator.pop(dialog);reload();}});},child:const Text('Save rates'))]));
   }
   Future<void> _editSettings(ShopConfiguration config) async {
@@ -181,7 +220,7 @@ class _ExpensesPageState extends State<ExpensesPage> with LiveShopData {
   final search=TextEditingController();
   String? category;
   DateTime? date;
-  int? recentDays;
+  String dateRange='all';
   void reload()=>setState(()=>future=widget.repository.expenses());
   @override Widget build(BuildContext context)=>RefreshIndicator(onRefresh:()async=>reload(),child:ListView(padding:const EdgeInsets.all(16),children:[
     Row(children:[Expanded(child:Text('Expenses',style:Theme.of(context).textTheme.headlineSmall)),
@@ -190,8 +229,8 @@ class _ExpensesPageState extends State<ExpensesPage> with LiveShopData {
     const Text('Shop expenses — electricity, staff, supplies, and more.'),
     const SizedBox(height:16),
     Wrap(spacing:8,children:[
-      for(final option in <(String,int?)>[('All',null),('Today',0),('7 days',6),('30 days',29)])
-        ChoiceChip(label:Text(option.$1),selected:recentDays==option.$2,onSelected:(_)=>setState(()=>recentDays=option.$2)),
+      for(final option in <(String,String)>[('All','all'),('Today','today'),('Yesterday','yesterday'),('7 days','week'),('30 days','month')])
+        ChoiceChip(label:Text(option.$1),selected:dateRange==option.$2,onSelected:(_)=>setState(()=>dateRange=option.$2)),
       DropdownButton<String?>(value:category,hint:const Text('All categories'),items:[
         const DropdownMenuItem(value:null,child:Text('All categories')),
         for(final c in expenseCategories)DropdownMenuItem(value:c,child:Text(c))
@@ -205,12 +244,10 @@ class _ExpensesPageState extends State<ExpensesPage> with LiveShopData {
     FutureBuilder<List<ExpenseRecord>>(future:future=refreshOnShopChange(future,widget.repository.expenses),builder:(context,snapshot){
       if(snapshot.hasError)return const WebsiteStatusPanel('Expenses unavailable',message:'Pull to retry.',icon:Icons.cloud_off_outlined);
       if(!snapshot.hasData)return const Center(child:CircularProgressIndicator());
-      final cutoff=recentDays==null?null:DateTime.now().subtract(Duration(days:recentDays!));
       final query=search.text.trim().toLowerCase();
       final visible=snapshot.data!.where((e)=>(category==null||e.category==category)
         &&(query.isEmpty||e.category.toLowerCase().contains(query)||(e.notes??'').toLowerCase().contains(query))
-        &&(date==null||e.date==dateOnly(date!))
-        &&(cutoff==null||e.date.compareTo(dateOnly(cutoff))>=0)).toList();
+        &&(date!=null?e.date==dateOnly(date!):bookingDateInRange(e.date,dateRange,DateTime.now()))).toList();
       final total=visible.fold<int>(0,(sum,e)=>sum+e.amount);
       return Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
         WebsiteMiniStat(label:'Total',value:money(total)),
@@ -265,7 +302,7 @@ class _TransactionsPageState extends State<TransactionsPage> with LiveShopData {
   final search=TextEditingController();
   String? mode,station;
   DateTime? date;
-  int? recentDays;
+  String dateRange='all';
   void reload()=>setState(()=>future=widget.repository.transactions());
   @override Widget build(BuildContext context)=>RefreshIndicator(onRefresh:()async=>reload(),child:ListView(padding:const EdgeInsets.all(16),children:[
     Text('Transactions',style:Theme.of(context).textTheme.headlineSmall),
@@ -277,15 +314,14 @@ class _TransactionsPageState extends State<TransactionsPage> with LiveShopData {
       if(!snapshot.hasData)return const Center(child:CircularProgressIndicator());
       final all=snapshot.data!;
       final stations={for(final t in all)t.stationId:t.station};
-      final cutoff=recentDays==null?null:DateTime.now().subtract(Duration(days:recentDays!));
       final query=search.text.trim().toLowerCase();
       final today=dateOnly(DateTime.now());
       final todaySales=all.where((t)=>dateOnly(t.date.toLocal())==today).toList();
       final todayTotal=todaySales.fold<int>(0,(sum,t)=>sum+t.total);
       final visible=all.where((t)=>(mode==null||t.mode==mode)&&(station==null||t.stationId==station)
         &&(query.isEmpty||t.customer.toLowerCase().contains(query)||t.receipt.toLowerCase().contains(query)||t.station.toLowerCase().contains(query))
-        &&(date==null||dateOnly(t.date.toLocal())==dateOnly(date!))
-        &&(cutoff==null||dateOnly(t.date.toLocal()).compareTo(dateOnly(cutoff))>=0)).toList();
+        &&(date!=null?dateOnly(t.date.toLocal())==dateOnly(date!)
+          :bookingDateInRange(dateOnly(t.date.toLocal()),dateRange,DateTime.now()))).toList();
       final rows=<List<Object?>>[
         ['Receipt','Date','Customer','Station','Mode','Method','Play','Snacks','Discount','Total'],
         for(final t in visible)[t.receipt,t.date.toLocal(),t.customer,t.station,t.mode,t.paymentMethod,
@@ -300,8 +336,8 @@ class _TransactionsPageState extends State<TransactionsPage> with LiveShopData {
         TextField(controller:search,onChanged:(_)=>setState((){}),
           decoration:const InputDecoration(labelText:'Search customer, receipt or station',prefixIcon:Icon(Icons.search))),
         Wrap(spacing:8,children:[
-          for(final option in <(String,int?)>[('All',null),('Today',0),('7 days',6),('30 days',29)])
-            ChoiceChip(label:Text(option.$1),selected:recentDays==option.$2,onSelected:(_)=>setState(()=>recentDays=option.$2)),
+          for(final option in <(String,String)>[('All','all'),('Today','today'),('Yesterday','yesterday'),('7 days','week'),('30 days','month')])
+            ChoiceChip(label:Text(option.$1),selected:dateRange==option.$2,onSelected:(_)=>setState(()=>dateRange=option.$2)),
           DropdownButton<String?>(value:mode,hint:const Text('All modes'),items:[
             const DropdownMenuItem(value:null,child:Text('All modes')),
             for(final m in ['GAMING','VR','RACING','RACING_VR'])DropdownMenuItem(value:m,child:Text(m))],

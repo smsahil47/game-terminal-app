@@ -440,6 +440,19 @@ class _StationCard extends StatelessWidget {
   const _StationCard({required this.station, required this.sessions});
   final Station station;
   final List<ActiveSession> sessions;
+  Future<void> _setMaintenance(BuildContext context, bool unavailable) async {
+    final controller = ShopScope.of(context);
+    try {
+      await controller.repository.setMaintenance(station.id, unavailable: unavailable);
+      await controller.refresh();
+    } catch (error) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(error.toString().replaceFirst('Bad state: ', ''))),
+        );
+      }
+    }
+  }
   @override
   Widget build(BuildContext context) {
     final color = switch (station.status) {
@@ -481,6 +494,18 @@ class _StationCard extends StatelessWidget {
                     fontWeight: FontWeight.w600,
                   ),
                 ),
+                if (station.status == StationStatus.available)
+                  PopupMenuButton<String>(
+                    tooltip: 'More options for ${station.name}',
+                    icon: const Icon(Icons.more_horiz, size: 18),
+                    onSelected: (_) => _setMaintenance(context, true),
+                    itemBuilder: (_) => const [
+                      PopupMenuItem(
+                        value: 'unavailable',
+                        child: Text('Mark unavailable'),
+                      ),
+                    ],
+                  ),
               ],
             ),
             const SizedBox(height: 12),
@@ -495,16 +520,46 @@ class _StationCard extends StatelessWidget {
               const Divider(height: 28),
               _SessionDetails(session: session),
             ],
-            if (station.status == StationStatus.available) ...[
+            if (station.status == StationStatus.inUse && sessions.isNotEmpty) ...[
               const SizedBox(height: 14),
               SizedBox(
                 width: double.infinity,
                 child: FilledButton.icon(
-                  onPressed: () => context.go('/sessions'),
-                  icon: const Icon(Icons.play_arrow, size: 17),
-                  label: const Text('Start Session'),
+                  onPressed: () => context.push(
+                    '/sessions?checkoutStation=${Uri.encodeComponent(station.id)}',
+                  ),
+                  icon: const Icon(Icons.stop, size: 17),
+                  label: const Text('End Session'),
                 ),
               ),
+            ],
+            if (station.status == StationStatus.available) ...[
+              const SizedBox(height: 14),
+              if (station.type == 'PS5_MULTI')
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    for (final mode in SessionMode.values)
+                      OutlinedButton(
+                        onPressed: () => context.push(
+                          '/sessions?station=${Uri.encodeComponent(station.id)}&mode=${mode.value}',
+                        ),
+                        child: Text(mode.label),
+                      ),
+                  ],
+                )
+              else
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    onPressed: () => context.push(
+                      '/sessions?station=${Uri.encodeComponent(station.id)}',
+                    ),
+                    icon: const Icon(Icons.play_arrow, size: 17),
+                    label: const Text('Start Session'),
+                  ),
+                ),
             ],
             if (station.status == StationStatus.maintenance) ...[
               const SizedBox(height: 14),
@@ -518,6 +573,14 @@ class _StationCard extends StatelessWidget {
                 child: const Text(
                   'Station unavailable',
                   style: TextStyle(fontSize: 12, color: AppTheme.warning),
+                ),
+              ),
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton(
+                  onPressed: () => _setMaintenance(context, false),
+                  child: const Text('Mark as available'),
                 ),
               ),
             ],

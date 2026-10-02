@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:game_terminal_app/app/game_terminal_app.dart';
 import 'package:go_router/go_router.dart';
 import 'package:game_terminal_app/data/models/app_role.dart';
+import 'package:game_terminal_app/data/models/shop_snapshot.dart';
 import 'package:game_terminal_app/data/repositories/auth_repository.dart';
 import 'package:game_terminal_app/features/auth/auth_controller.dart';
 
@@ -53,10 +54,11 @@ void main() {
     'receptionist signs in, sees station data and filters availability',
     (tester) async {
       final repo = FakeAuthRepository();
+      final shop = FakeShopRepository();
       await tester.pumpWidget(
         GameTerminalApp(
           auth: AuthController(repo),
-          shop: FakeShopRepository(),
+          shop: shop,
           connected: true,
         ),
       );
@@ -93,6 +95,11 @@ void main() {
       await tester.tap(find.widgetWithText(ChoiceChip, 'Available'));
       await tester.pumpAndSettle();
       expect(find.text('Station 2'), findsNothing);
+      await tester.tap(find.byTooltip('More options for Station 1'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Mark unavailable'));
+      await tester.pumpAndSettle();
+      expect(shop.maintenanceChanges, [('s1', true)]);
       await tester.tap(find.widgetWithText(ChoiceChip, 'In use'));
       await tester.pumpAndSettle();
       expect(find.text('Station 2'), findsOneWidget);
@@ -130,6 +137,30 @@ void main() {
       await tester.pumpWidget(const SizedBox());
     },
   );
+  testWidgets('due duration reminder is visible until receptionist dismisses it',
+      (tester) async {
+    final shop = FakeShopRepository(data: ShopSnapshot(
+      cafeName: 'Test shop', totalControllers: 6,
+      stations: const [Station(id: 'ps5-01', name: 'PS5 #1', type: 'PS5',
+        status: StationStatus.inUse, order: 1)],
+      sessions: [ActiveSession(id: 'session-1', stationId: 'ps5-01',
+        customerName: 'Customer', mode: SessionMode.gaming,
+        startedAt: DateTime.now().subtract(const Duration(minutes: 31)),
+        status: 'RUNNING', targetMinutes: 30)],
+    ));
+    await tester.pumpWidget(GameTerminalApp(
+      auth: AuthController(FakeAuthRepository(
+        user: const StaffUser('staff-1', 'staff@test.invalid'),
+        role: AppRole.receptionist)),
+      shop: shop, connected: true,
+    ));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('PS5 #1 has reached 30 Minutes'), findsOneWidget);
+    await tester.tap(find.text('Dismiss'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('PS5 #1 has reached 30 Minutes'), findsNothing);
+    await tester.pumpWidget(const SizedBox());
+  });
   testWidgets('unassigned account sees access notice and no shop data', (
     tester,
   ) async {

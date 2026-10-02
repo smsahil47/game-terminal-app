@@ -9,6 +9,21 @@ class SupabaseShopRepository implements ShopRepository {
   SupabaseShopRepository(this.client);
   final SupabaseClient client;
   @override
+  Future<void> setMaintenance(String stationId, {required bool unavailable}) async {
+    final expected = unavailable ? 'AVAILABLE' : 'MAINTENANCE';
+    final next = unavailable ? 'MAINTENANCE' : 'AVAILABLE';
+    final patch = <String, dynamic>{'status': next};
+    if (unavailable) patch['current_mode'] = null;
+    final row = await client
+        .from('stations')
+        .update(patch)
+        .eq('id', stationId)
+        .eq('status', expected)
+        .select('id')
+        .maybeSingle();
+    if (row == null) throw StateError('Station status changed. Refresh and try again.');
+  }
+  @override
   Future<ShopSnapshot> load() async {
     final results = await Future.wait<dynamic>([
       client

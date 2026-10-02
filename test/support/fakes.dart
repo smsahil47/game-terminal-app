@@ -43,6 +43,7 @@ class FakeShopRepository implements ShopRepository {
   ShopSnapshot data;
   int loads = 0;
   Object? error;
+  final List<(String, bool)> maintenanceChanges = [];
   Future<ShopSnapshot> Function()? loadOverride;
   final events = StreamController<bool>.broadcast(sync: true);
   @override
@@ -51,6 +52,11 @@ class FakeShopRepository implements ShopRepository {
     if (loadOverride != null) return loadOverride!();
     if (error != null) throw error!;
     return data;
+  }
+
+  @override
+  Future<void> setMaintenance(String stationId, {required bool unavailable}) async {
+    maintenanceChanges.add((stationId, unavailable));
   }
 
   @override

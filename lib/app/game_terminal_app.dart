@@ -97,7 +97,13 @@ class _GameTerminalAppState extends State<GameTerminalApp>
           GoRoute(path: '/transactions',builder: (_, _) => TransactionsPage(repository:widget.website)),
           GoRoute(path: '/daily-report',builder: (_, _) => DailyReportPage(operations:widget.operations)),
           for (final path in ['/sessions', '/owner/sessions'])
-            GoRoute(path: path, builder: (_, _) => SessionsPage(repository: widget.operations, website:widget.website, role: widget.auth.role!)),
+            GoRoute(path: path, builder: (_, state) => SessionsPage(
+              repository: widget.operations, website:widget.website,
+              role: widget.auth.role!,
+              initialStationId: state.uri.queryParameters['station'],
+              initialMode: state.uri.queryParameters['mode'],
+              checkoutStationId: state.uri.queryParameters['checkoutStation'],
+            )),
           for (final path in ['/bookings', '/owner/bookings'])
             GoRoute(path: path, builder: (_, _) => BookingsPage(repository: widget.operations, website:widget.website, role: widget.auth.role!)),
           GoRoute(path: '/owner/reports', builder: (_, _) => OwnerBusinessPage(operations:widget.operations,reportsOnly:true)),

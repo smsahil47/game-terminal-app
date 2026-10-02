@@ -47,7 +47,8 @@ class SupabaseOperationsRepository implements OperationsRepository {
         'end_time':null,'duration_minutes':0,'extra_minutes':0,
         'rate_per_hour':draft.ratePerHour,'booked_play_amount':null,
         'target_duration_minutes':draft.minutes,'subtotal':0,'discount':0,'tax':0,'total':0,
-        'status':'RUNNING','notes':null,'receipt_number':null,'snacks':draft.snacks.map((s)=>s.toJson()).toList(),
+        'status':'RUNNING','notes':draft.notes?.trim().isEmpty == true ? null : draft.notes?.trim(),
+        'receipt_number':null,'snacks':draft.snacks.map((s)=>s.toJson()).toList(),
         'snacks_total':draft.snacks.fold<int>(0,(sum,s)=>sum+s.price)
       }).select('*').single();
       return SessionDetail.fromJson(row);

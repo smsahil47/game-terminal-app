@@ -2,8 +2,18 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:game_terminal_app/core/billing/billing.dart';
 import 'package:game_terminal_app/data/models/operations.dart';
 import 'package:game_terminal_app/data/models/shop_snapshot.dart';
+import 'package:game_terminal_app/features/operations/operations_pages.dart';
 
 void main() {
+  test('booking date presets match the website filters', () {
+    final now = DateTime(2026, 10, 2, 15);
+    expect(bookingDateInRange('2026-10-02', 'today', now), isTrue);
+    expect(bookingDateInRange('2026-10-01', 'yesterday', now), isTrue);
+    expect(bookingDateInRange('2026-09-25', 'week', now), isTrue);
+    expect(bookingDateInRange('2026-09-24', 'week', now), isFalse);
+    expect(bookingDateInRange('2026-09-02', 'month', now), isTrue);
+    expect(bookingDateInRange('2026-09-01', 'month', now), isFalse);
+  });
   test('menu tiers and prorated custom duration match website rules', () {
     expect(menuPlayAmount(SessionMode.gaming,30,1,150),100);
     expect(menuPlayAmount(SessionMode.gaming,60,4,450),450);
