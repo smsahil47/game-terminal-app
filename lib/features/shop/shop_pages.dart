@@ -9,6 +9,7 @@ import '../../core/theme/website_widgets.dart';
 import '../../data/models/shop_snapshot.dart';
 import 'shop_controller.dart';
 import 'ps5_model_stage.dart';
+import '../operations/start_session_sheet.dart';
 
 class ShopOverviewPage extends StatelessWidget {
   const ShopOverviewPage({super.key});
@@ -21,7 +22,17 @@ class ShopOverviewPage extends StatelessWidget {
       Align(
         alignment: Alignment.centerLeft,
         child: FilledButton.icon(
-          onPressed: () => context.go('/sessions'),
+          onPressed: () async {
+            final controller = ShopScope.of(context);
+            final dependencies = ShopScope.dependenciesOf(context);
+            final started = await showStartSessionSheet(
+              context,
+              data,
+              dependencies.operations,
+              dependencies.website,
+            );
+            if (started) await controller.refresh();
+          },
           icon: const Icon(Icons.play_arrow),
           label: const Text('Start session'),
         ),
@@ -440,6 +451,22 @@ class _StationCard extends StatelessWidget {
   const _StationCard({required this.station, required this.sessions});
   final Station station;
   final List<ActiveSession> sessions;
+  Future<void> _startSession(BuildContext context, {SessionMode? mode}) async {
+    final controller = ShopScope.of(context);
+    final shop = controller.snapshot;
+    if (shop == null) return;
+    final dependencies = ShopScope.dependenciesOf(context);
+    final started = await showStartSessionSheet(
+      context,
+      shop,
+      dependencies.operations,
+      dependencies.website,
+      stationId: station.id,
+      initialMode: mode,
+    );
+    if (started) await controller.refresh();
+  }
+
   Future<void> _setMaintenance(BuildContext context, bool unavailable) async {
     final controller = ShopScope.of(context);
     try {
@@ -542,9 +569,7 @@ class _StationCard extends StatelessWidget {
                   children: [
                     for (final mode in SessionMode.values)
                       OutlinedButton(
-                        onPressed: () => context.push(
-                          '/sessions?station=${Uri.encodeComponent(station.id)}&mode=${mode.value}',
-                        ),
+                        onPressed: () => _startSession(context, mode: mode),
                         child: Text(mode.label),
                       ),
                   ],
@@ -553,9 +578,7 @@ class _StationCard extends StatelessWidget {
                 SizedBox(
                   width: double.infinity,
                   child: FilledButton.icon(
-                    onPressed: () => context.push(
-                      '/sessions?station=${Uri.encodeComponent(station.id)}',
-                    ),
+                    onPressed: () => _startSession(context),
                     icon: const Icon(Icons.play_arrow, size: 17),
                     label: const Text('Start Session'),
                   ),

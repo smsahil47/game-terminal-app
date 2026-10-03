@@ -16,10 +16,16 @@ class ShopScope extends InheritedNotifier<ShopController> {
   const ShopScope({
     super.key,
     required ShopController controller,
+    required this.operations,
+    required this.website,
     required super.child,
   }) : super(notifier: controller);
+  final OperationsRepository operations;
+  final WebsiteRepository website;
   static ShopController of(BuildContext context) =>
       context.dependOnInheritedWidgetOfExactType<ShopScope>()!.notifier!;
+  static ShopScope dependenciesOf(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<ShopScope>()!;
 }
 
 class StaffShell extends StatefulWidget {
@@ -162,6 +168,8 @@ class _StaffShellState extends State<StaffShell> {
         '${hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')} ${now.hour < 12 ? 'AM' : 'PM'}';
     return ShopScope(
       controller: controller,
+      operations: widget.operations,
+      website: widget.website,
       child: Scaffold(
         drawer: Drawer(
           child: SafeArea(

@@ -15,6 +15,7 @@ import '../../data/repositories/website_repository.dart';
 import '../../services/document_export.dart';
 import '../../services/live_shop_data.dart';
 import 'booking_start.dart';
+import 'start_session_sheet.dart';
 
 String money(int value) => '₹$value';
 String dateOnly(DateTime date) => '${date.year.toString().padLeft(4,'0')}-${date.month.toString().padLeft(2,'0')}-${date.day.toString().padLeft(2,'0')}';
@@ -83,63 +84,17 @@ class _SessionsPageState extends State<SessionsPage> with LiveShopData {
       })
     ]));
   }
-  Future<void> _start(BuildContext context,ShopSnapshot shop,{String? stationId,String? selectedMode}) async {
-    final name=TextEditingController(), phone=TextEditingController(), game=TextEditingController(), notes=TextEditingController();
-    final snackName=TextEditingController(),snackPrice=TextEditingController();
-    final snacks=<Snack>[];
-    Station? station=shop.stations.where((s)=>s.status==StationStatus.available &&
-      (stationId==null||s.id==stationId)).firstOrNull;
-    if(station==null){notice(context,'The selected station is not available.');return;}
-    SessionMode mode=station.type=='PS5_MULTI'
-      ? SessionMode.values.where((m)=>m.value==selectedMode).firstOrNull??SessionMode.gaming
-      : SessionMode.gaming;
-    int players=1; int? reminderMinutes; List<String> games=[];
-    try { games=await widget.repository.games(); } catch (_) {}
-    final config=await widget.website.configuration();
-    if(!context.mounted) return;
-    final catalog=games.isEmpty?defaultGames:games;
-    await showDialog<void>(context:context,builder:(dialog)=>StatefulBuilder(builder:(context,setDialog) => AlertDialog(
-      title:const Text('Start session'),content:SizedBox(width:420,child:SingleChildScrollView(child:Column(mainAxisSize:MainAxisSize.min,children:[
-        DropdownButtonFormField<Station>(initialValue:station,decoration:const InputDecoration(labelText:'Station'),items:[
-          for(final s in shop.stations.where((s)=>s.status==StationStatus.available)) DropdownMenuItem(value:s,child:Text(s.name))
-        ],onChanged:(v)=>setDialog((){station=v;if(v?.type!='PS5_MULTI')mode=SessionMode.gaming;})),
-        const SizedBox(height:12),field(name,'Customer name'),field(phone,'Phone'),
-        DropdownButtonFormField<SessionMode>(key:ValueKey('${station?.id}:${mode.value}'),initialValue:mode,
-          decoration:const InputDecoration(labelText:'Mode'),items:[
-          for(final m in station?.type=='PS5_MULTI'?SessionMode.values:[SessionMode.gaming]) DropdownMenuItem(value:m,child:Text(m.label))
-        ],onChanged:(v)=>setDialog((){
-          mode=v!;
-          if(!gamesForSessionMode(mode.value,catalog).contains(game.text))game.clear();
-        })),
-        if(mode==SessionMode.gaming) DropdownButtonFormField<int>(initialValue:players,decoration:const InputDecoration(labelText:'Players/controllers'),items:[
-          for(var n=1;n<=4;n++) DropdownMenuItem(value:n,child:Text('$n'))
-        ],onChanged:(v)=>setDialog(()=>players=v!)),
-        DropdownButtonFormField<String>(key:ValueKey('game-${mode.value}'),decoration:const InputDecoration(labelText:'Game'),items:[
-          for(final g in gamesForSessionMode(mode.value,catalog)) DropdownMenuItem(value:g,child:Text(g))
-        ],onChanged:(v)=>game.text=v??''),
-        field(game,'Game title'),
-        const Text('Session Duration · reminder only'),
-        Wrap(spacing:8,children:[for(final choice in [30,60,120])
-          ChoiceChip(label:Text(choice==60?'1 Hour':choice==120?'2 Hours':'30 Minutes'),
-            selected:reminderMinutes==choice,
-            onSelected:(_)=>setDialog(()=>reminderMinutes=choice))]),
-        for(final snack in snacks)ListTile(title:Text(snack.name),subtitle:Text(money(snack.price)),
-          trailing:IconButton(tooltip:'Remove snack',icon:const Icon(Icons.close),
-            onPressed:()=>setDialog(()=>snacks.remove(snack)))),
-        field(snackName,'Snack (optional)'),field(snackPrice,'Snack price',keyboard:TextInputType.number),
-        TextButton(onPressed:(){if(snackName.text.trim().isEmpty||parsed(snackPrice)<=0)return;
-          setDialog((){snacks.add(Snack(snackName.text.trim(),parsed(snackPrice)));snackName.clear();snackPrice.clear();});
-        },child:const Text('Add snack')),
-        field(notes,'Notes (optional)'),
-        const Text('Billing follows actual elapsed time.'),
-      ]))),actions:[TextButton(onPressed:()=>Navigator.pop(dialog),child:const Text('Cancel')),
-        FilledButton(onPressed:() async { final selected=station; final duration=reminderMinutes;
-          if(selected==null || name.text.trim().isEmpty || duration==null){notice(dialog,'Choose a station, customer and session duration.');return;}
-          if(selected.type!='PS5_MULTI' && mode!=SessionMode.gaming){notice(dialog,'This station supports Gaming only.');return;}
-          await runAction(dialog,() async { await widget.repository.start(SessionDraft(station:selected,customerName:name.text,phone:phone.text,mode:mode,minutes:duration,players:players,game:game.text,notes:notes.text,playAmount:0,ratePerHour:config.fallbackRate(mode.value,players),snacks:snacks),shop.controllersFree);
-            if(dialog.mounted){Navigator.pop(dialog);reload();} });
-        },child:const Text('Start'))]
-    )));
+  Future<void> _start(BuildContext context, ShopSnapshot shop,
+      {String? stationId, String? selectedMode}) async {
+    if (!widget.role.canOperate) return;
+    final mode = SessionMode.values
+        .where((value) => value.value == selectedMode)
+        .firstOrNull;
+    final started = await showStartSessionSheet(
+      context, shop, widget.repository, widget.website,
+      stationId: stationId, initialMode: mode,
+    );
+    if (started && mounted) reload();
   }
   Future<void> _details(BuildContext context,SessionDetail s) async {
     await showDialog<void>(context:context,builder:(dialog)=>AlertDialog(
